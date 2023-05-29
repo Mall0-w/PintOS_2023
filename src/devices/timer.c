@@ -96,11 +96,14 @@ timer_sleep (int64_t ticks)
   ASSERT (intr_get_level () == INTR_ON);
 
   struct thread *cur = thread_current();
-  cur->sleep_ticks = start + ticks;
-
+  cur->awake_time = start + ticks;
+  
+  /* Disables interrupts to avoid concurrency issues */
   intr_disable();
+  /* Block the current thread */
   thread_block();
-  list_insert_ordered(&blocked_thread_list, &cur->elem, (list_less_func *) &sleep_tick_compare, NULL);
+  /* Insert current thread into a list of blocked threads sorted by awake_time value */
+  list_insert_ordered(&blocked_thread_list, &cur->elem, (list_less_func *) &awake_time_compare, NULL);
   intr_enable();
 
   // while (timer_elapsed (start) < ticks) 
@@ -182,22 +185,18 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-
   thread_tick ();
-
   
-
-
-  // Check through  blocked lists if any thread is ready to wake up
-
 }
 
 /* Checks if thread A's sleep tick is less than thread B's sleep tick*/
-bool sleep_tick_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+bool awake_time_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  /* Convert list elements into respective thread */
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
 
-  return thread_a->sleep_ticks < thread_b->sleep_ticks;
+  /* Return a boolean comparator of the two threads' awake_time values */
+  return thread_a->awake_time < thread_b->awake_time;
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
