@@ -28,11 +28,6 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
-/* List of all currently sleeping processes.  Processes are added
-    to this list when they are slept and removed when their sleep timer
-    runs out*/
-static struct list sleep_list;
-
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -97,14 +92,12 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-  initial_thread->sleeping_ticks = -1;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -204,9 +197,6 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
-  /*set its sleeping_ticks to negative 1 since it is no longer sleeping*/
-  t->sleeping_ticks = -1;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -337,50 +327,6 @@ thread_foreach (thread_action_func *func, void *aux)
        e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, allelem);
-      func (t, aux);
-    }
-}
-/*Invoke this function to block the current thread and add to the sleeping list*/
-void sleep_thread(void){
-  enum intr_level old_level;
-  //grab current thread
-  struct thread* thr = thread_current();
-  ASSERT (is_thread (thr));
-  ASSERT (thr->status != THREAD_BLOCKED);
-  //disable interrupts for list manipulation and blocking
-  old_level = intr_disable ();
-  list_push_back(&sleep_list, &thr->sleepelem);
-  thread_block();
-  //return to old interrupt level
-  intr_set_level (old_level);
-}
-
-/*Invoke this function to remove a sleeping thread*/
-void wake_thread(struct thread* thr){
-  enum intr_level old_level;
-
-  ASSERT (is_thread (thr));
-  ASSERT (thr->status == THREAD_BLOCKED);
-  ASSERT (thr->sleeping_ticks <= 0);
-  thr->sleeping_ticks = -1;
-  old_level = intr_disable ();
-  list_remove (&thr->sleepelem);
-  thread_unblock(thr);
-  intr_set_level (old_level);
-}
-/* Invoke function 'func' on all sleeping threads, passing along 'aux'.
-   This function must be called with interrupts off. */
-void
-sleep_foreach (thread_action_func *func, void *aux)
-{
-  struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
-  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
-       e = list_next (e))
-    {
-      struct thread *t = list_entry (e, struct thread, sleepelem);
       func (t, aux);
     }
 }
