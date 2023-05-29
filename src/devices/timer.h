@@ -26,4 +26,6 @@ void timer_ndelay (int64_t nanoseconds);
 
 void timer_print_stats (void);
 
+bool sleep_tick_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 #endif /* devices/timer.h */

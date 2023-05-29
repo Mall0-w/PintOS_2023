@@ -7,6 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "lib/kernel/list.h"
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -29,6 +30,8 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static struct list blocked_thread_list;
+
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -90,22 +93,18 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
+  ASSERT (intr_get_level () == INTR_ON);
 
   struct thread *cur = thread_current();
-  struct lock lock;
-  lock_init(&lock);
+  cur->sleep_ticks = start + ticks;
 
-  
+  intr_disable();
+  thread_block();
+  list_insert_ordered(&blocked_thread_list, &cur->elem, (list_less_func *) &sleep_tick_compare, NULL);
+  intr_enable();
 
-
-  timer_interrupt(NULL);
-  
-
-
-
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  // while (timer_elapsed (start) < ticks) 
+  //   thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -183,7 +182,22 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
   thread_tick ();
+
+  
+
+
+  // Check through  blocked lists if any thread is ready to wake up
+
+}
+
+/* Checks if thread A's sleep tick is less than thread B's sleep tick*/
+bool sleep_tick_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+
+  return thread_a->sleep_ticks < thread_b->sleep_ticks;
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
