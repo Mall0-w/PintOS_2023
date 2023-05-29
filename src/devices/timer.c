@@ -105,7 +105,7 @@ awake_time_compare(const struct list_elem *a, const struct list_elem *b) {
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
+ timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
@@ -114,17 +114,14 @@ timer_sleep (int64_t ticks)
   cur->awake_time = start + ticks;
   
   /* Disables interrupts to avoid concurrency issues */
-  intr_disable();
+  enum intr_level old_status = intr_disable();
   /* Insert current thread into a list of blocked threads sorted by awake_time value */
   list_insert_ordered(&blocked_thread_list, &cur->elem, (list_less_func *) &awake_time_compare, NULL);
   /* Block the current thread */
-  
   thread_block();
   /* Enable interrupts back */
-  intr_enable();
+  intr_set_level(old_status);
 
-  // while (timer_elapsed (start) < ticks) 
-  //   thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
