@@ -359,9 +359,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  enum intr_level old_level = intr_disable();
   return thread_current ()->priority;
-  intr_set_level(old_level);
 }
 
 /*Function used to sort ready list; notably sorts is descending order instead of ascending*/
