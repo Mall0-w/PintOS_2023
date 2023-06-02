@@ -3,6 +3,7 @@
 
 #include <list.h>
 #include <stdbool.h>
+#include <thread.h>
 
 /* A counting semaphore. */
 struct semaphore 
@@ -40,6 +41,8 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+bool compare_waiter_priority (const struct list_elem* waiter_1, const struct list_elem* waiter_2, void *aux UNUSED);
 
 /* Optimization barrier.
 

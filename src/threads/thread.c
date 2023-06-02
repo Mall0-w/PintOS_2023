@@ -54,6 +54,9 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+/* Limit on depth of nested priority donation */
+#define DEPTH_LIMIT 8
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -238,7 +241,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   //priority scheduling so insert into ready list based off priority
-  list_insert_ordered(&ready_list, &t->elem, thread_order_priority, NULL);
+  list_insert_ordered(&ready_list, &t->elem, compare_thread_priority, NULL);
   t->status = THREAD_READY;
 
   //if unblocked thread trumps hierarchy
@@ -322,7 +325,7 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread) 
     //priority scheduling so insert into ready list based off priority
-    list_insert_ordered(&ready_list, &cur->elem, thread_order_priority, NULL);
+    list_insert_ordered(&ready_list, &cur->elem, compare_thread_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -363,8 +366,13 @@ thread_get_priority (void)
 }
 
 /*Function used to sort ready list; notably sorts is descending order instead of ascending*/
-bool thread_order_priority(const struct list_elem* thread1, const struct list_elem* thread2, void* aux UNUSED){
-  return list_entry(thread1, struct thread, elem)->priority > list_entry(thread2, struct thread, elem)->priority;
+bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux UNUSED){
+  /* Convert list elements into respective thread */
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+  
+  /* Return a boolean comparator of the two threads' priority values */
+  return thread_a->priority > thread_b->priority;
 }
 
 /*Function yields if there ha been a change in the priority hierarchy*/
