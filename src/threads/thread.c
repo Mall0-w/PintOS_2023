@@ -237,9 +237,22 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //priority scheduling so insert into ready list based off priority
+  list_insert_ordered(&ready_list, &t->elem, thread_order_priority, NULL);
   t->status = THREAD_READY;
+
+  //if unblocked thread trumps hierarchy
+  if(t->priority > thread_current()->priority){
+    //check if external interrupt is happening and yield accordingly
+    if(intr_context()){
+      intr_yield_on_return();
+    }else{
+      thread_yield();
+    }
+  }
+
   intr_set_level (old_level);
+  
 }
 
 /* Returns the name of the running thread. */
@@ -308,7 +321,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    //priority scheduling so insert into ready list based off priority
+    list_insert_ordered(&ready_list, &cur->elem, thread_order_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -336,6 +350,9 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  //need to check if yielding due to potentially new priority hierarchy
+  yield_if_priority_change();
+  return;
 }
 
 /* Returns the current thread's priority. */
@@ -343,6 +360,21 @@ int
 thread_get_priority (void) 
 {
   return thread_current ()->priority;
+}
+
+/*Function used to sort ready list; notably sorts is descending order instead of ascending*/
+bool thread_order_priority(const struct list_elem* thread1, const struct list_elem* thread2, void* aux UNUSED){
+  return list_entry(thread1, struct thread, elem)->priority > list_entry(thread2, struct thread, elem)->priority;
+}
+
+/*Function yields if there ha been a change in the priority hierarchy*/
+void yield_if_priority_change(){
+  ASSERT(!list_empty(&ready_list));
+  if(thread_current()->priority < 
+    list_entry(list_front(&ready_list), struct thread, elem)->priority){
+      thread_yield();
+    }
+  return;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -493,6 +525,7 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
+    //ready list sorted in order of ascending priority so pop back
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
