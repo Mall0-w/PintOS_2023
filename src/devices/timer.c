@@ -199,21 +199,8 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  awaken_threads();
   thread_tick ();
-  // Check through blocked lists if any thread is ready to wake up
-  while(!list_empty(&blocked_thread_list)) {
-    // Gets the element from the head of the list and converts it to a thread
-    struct thread *thread = list_entry(list_front(&blocked_thread_list), struct thread, elem);
-    // If the thread's awake_time is less than the current ticks, wake up thread due to alarm
-    if(thread->awake_time <= timer_ticks()) {
-      list_pop_front(&blocked_thread_list);
-      thread_unblock(thread);
-    } else {
-      // If the head's thread is not ready to wake up, every element after must also be not ready
-      // to wake up due to being sorted by awake_time
-      break;
-    }
-  }
 }
 
 
@@ -286,4 +273,22 @@ real_time_delay (int64_t num, int32_t denom)
      the possibility of overflow. */
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
+}
+
+/* Wakes all sleeping threads that need to wake up */
+void awaken_threads() {
+  // Check through blocked lists if any thread is ready to wake up
+  while(!list_empty(&blocked_thread_list)) {
+    // Gets the element from the head of the list and converts it to a thread
+    struct thread *thread = list_entry(list_front(&blocked_thread_list), struct thread, elem);
+    // If the thread's awake_time is less than the current ticks, wake up thread due to alarm
+    if(thread->awake_time <= timer_ticks()) {
+      list_pop_front(&blocked_thread_list);
+      thread_unblock(thread);
+    } else {
+      // If the head's thread is not ready to wake up, every element after must also be not ready
+      // to wake up due to being sorted by awake_time
+      break;
+    }
+  }
 }
