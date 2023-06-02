@@ -475,18 +475,18 @@ void lock_gonna_block(struct lock* lock){
     //since a dying thread should be counted and running thread executed the block
     //but just in case only doing logic for blocked and ready
     if(blocking_thread->status == THREAD_READY){
-      blocking_thread = NULL;
       //since its a ready we now have to resort the ready queue
       //since priority may have changed
       list_sort(&ready_list, thread_order_priority, NULL);
-
-      continue;
+      //since ready thread, don't have to go up chain of blocked threads anymore
+      break;
     }else if(blocking_thread->status == THREAD_BLOCKED){
       //iterate to next blocking thread
       if(blocking_thread->blocking_lock != NULL){
         blocking_thread = blocking_thread->blocking_lock->holder;
       }else{
-        blocking_thread = NULL;
+        //no more chain of blocked threads since its not blocked by a lock
+        break;
       }
     }
     iterations++;
