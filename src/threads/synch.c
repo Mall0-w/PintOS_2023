@@ -350,10 +350,12 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 }
 
 bool 
-compare_semaphore_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
+compare_semaphore_priority(const struct list_elem *a, const struct list_elem *b, void* aux) {
   /* Convert list elements into respective thread */
   struct semaphore_elem *semaphore_a = list_entry(a, struct semaphore_elem, elem);
   struct semaphore_elem *semaphore_b = list_entry(b, struct semaphore_elem, elem);
+
+  (void)aux;
 
   /* Return a boolean comparator of the two threads' awake_time values */
   return compare_thread_priority(list_front(&semaphore_a->semaphore.waiters), list_front(&semaphore_b->semaphore.waiters), NULL);
@@ -369,13 +371,13 @@ handle_lock_block(struct lock *lock) {
       blocking_thread->practical_priority = thread_get_priority();
       if (blocking_thread->status == THREAD_READY) {
         sort_ready_list_priority();
-        return;
+        break;
       }
     }
     if(blocking_thread->blocking_lock != NULL) {
         blocking_thread = blocking_thread->blocking_lock->holder;
     } else {
-      return;
+      break;
     }
   }
   return;
@@ -391,15 +393,14 @@ handle_lock_release(struct lock *lock) {
   while (lock_it != list_end(&thread_current()->owned_locks)) {
     cur_lock = list_entry(lock_it, struct lock, elem);
     if(cur_lock == lock){
-      //if on lock that removing, remove it and continue
-      lock_it = list_pop_front(lock_it);
-      continue;
+      //if on lock that removing, remove it
+      lock_it = list_remove(lock_it);
     }
     cur_priority = list_entry(list_max(&cur_lock->semaphore.waiters, compare_thread_priority, NULL), struct thread, elem)->practical_priority;
-    new_priority = cur_priority > new_priority ? cur_priority : new_priority;
-    cur_lock = list_next(cur_lock);
+    new_priority = (cur_priority > new_priority) ? cur_priority : new_priority;
+    lock_it = list_next(lock_it);
   }
-  thread_current()->practical_priority = new_priority > thread_get_priority ? new_priority : thread_get_priority;
+  if(new_priority > thread_current()->priority) thread_set_priority(new_priority);
   yield_if_priority_change();
   return;
 }

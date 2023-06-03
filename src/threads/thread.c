@@ -596,13 +596,13 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 bool 
-compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
+compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux) {
   /* Convert list elements into respective thread */
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
 
   /* Return a boolean comparator of the two threads' awake_time values */
-  return thread_a->practical_priority < thread_b->practical_priority;
+  return thread_a->practical_priority > thread_b->practical_priority;
 }
 
 void
@@ -610,11 +610,11 @@ sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
 }
 
-/*Function yields if there ha been a change in the priority hierarchy*/
+/*Function yields if there has been a change in the priority hierarchy*/
 void 
 yield_if_priority_change(void) {
   if(list_empty(&ready_list)) return;
-  if(thread_get_priority < 
+  if(thread_get_priority > 
     list_entry(list_front(&ready_list), struct thread, elem)->practical_priority){
       thread_yield();
     }

@@ -265,7 +265,7 @@ real_time_delay (int64_t num, int32_t denom)
 
 /* Checks if thread A's sleep tick is less than thread B's sleep tick*/
 bool 
-awake_time_compare(struct list_elem *a, struct list_elem *b, void *aux) {
+awake_time_compare(struct list_elem *a, struct list_elem *b, void* aux) {
   /* Convert list elements into respective thread */
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);

@@ -42,7 +42,7 @@ void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
 
-bool compare_semaphore_priority (const struct list_elem* waiter_1, const struct list_elem* waiter_2, void *aux);
+bool compare_semaphore_priority(const struct list_elem *a, const struct list_elem *b, void* aux);
 void handle_lock_block(struct lock *lock);
 void handle_lock_release(struct lock *lock);
 
