@@ -54,9 +54,6 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
-/* Limit on depth of nested priority donation */
-#define DEPTH_LIMIT 8
-
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -243,19 +240,7 @@ thread_unblock (struct thread *t)
   //priority scheduling so insert into ready list based off priority
   list_insert_ordered(&ready_list, &t->elem, compare_thread_priority, NULL);
   t->status = THREAD_READY;
-
-  //if unblocked thread trumps hierarchy
-  if(t->priority > thread_current()->priority){
-    //check if external interrupt is happening and yield accordingly
-    if(intr_context()){
-      intr_yield_on_return();
-    }else{
-      thread_yield();
-    }
-  }
-
   intr_set_level (old_level);
-  
 }
 
 /* Returns the name of the running thread. */
@@ -317,16 +302,15 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  struct thread *cur = thread_current ();
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (thread_current() != idle_thread) 
     //priority scheduling so insert into ready list based off priority
-    list_insert_ordered(&ready_list, &cur->elem, compare_thread_priority, NULL);
-  cur->status = THREAD_READY;
+    list_insert_ordered(&ready_list, &thread_current()->elem, compare_thread_priority, NULL);
+  thread_current()->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
 }
@@ -352,9 +336,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
-  //need to check if yielding due to potentially new priority hierarchy
-  yield_if_priority_change();
+  thread_current()->priority = new_priority;
+  if (new_priority > thread_get_priority) {
+    thread_current()->practical_priority = new_priority;
+    //need to check if yielding due to potentially new priority hierarchy
+    yield_if_priority_change();
+  }
   return;
 }
 
@@ -362,27 +349,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
-}
-
-/*Function used to sort ready list; notably sorts is descending order instead of ascending*/
-bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux UNUSED){
-  /* Convert list elements into respective thread */
-  struct thread *thread_a = list_entry(a, struct thread, elem);
-  struct thread *thread_b = list_entry(b, struct thread, elem);
-  
-  /* Return a boolean comparator of the two threads' priority values */
-  return thread_a->priority > thread_b->priority;
-}
-
-/*Function yields if there ha been a change in the priority hierarchy*/
-void yield_if_priority_change(){
-  ASSERT(!list_empty(&ready_list));
-  if(thread_current()->priority < 
-    list_entry(list_front(&ready_list), struct thread, elem)->priority){
-      thread_yield();
-    }
-  return;
+  return thread_current ()->practical_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -503,6 +470,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  
+  t->practical_priority = priority;
+  list_init(&t->owned_locks);
+  t->blocking_lock = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -623,3 +594,29 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+bool 
+compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
+  /* Convert list elements into respective thread */
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+
+  /* Return a boolean comparator of the two threads' awake_time values */
+  return thread_a->practical_priority < thread_b->practical_priority;
+}
+
+void
+sort_ready_list_priority(void) {
+  list_sort(&ready_list, compare_thread_priority, NULL);
+}
+
+/*Function yields if there ha been a change in the priority hierarchy*/
+void 
+yield_if_priority_change(void) {
+  if(list_empty(&ready_list)) return;
+  if(thread_get_priority < 
+    list_entry(list_front(&ready_list), struct thread, elem)->practical_priority){
+      thread_yield();
+    }
+  return;
+}
