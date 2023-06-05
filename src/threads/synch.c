@@ -119,6 +119,7 @@ sema_up (struct semaphore *sema)
   if (!list_empty (&sema->waiters)) 
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
+  thread_yield();
   intr_set_level (old_level);
 }
 
@@ -206,6 +207,7 @@ lock_acquire (struct lock *lock)
   lock->holder = thread_current();
   lock->holder->blocking_lock = NULL;
   list_push_back(&thread_current()->owned_locks, &lock->elem);
+  thread_yield();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -240,8 +242,8 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
-  sema_up (&lock->semaphore);
   handle_lock_release(lock);
+  sema_up (&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -367,8 +369,8 @@ handle_lock_block(struct lock *lock) {
   struct thread *blocking_thread = lock->holder;
 
   for (int i = 0; i < DEPTH_LIMIT && blocking_thread != NULL; i++) {
-    if (blocking_thread->practical_priority < thread_get_priority()) {
-      blocking_thread->practical_priority = thread_get_priority();
+    if (blocking_thread->effective_priority < thread_current()->effective_priority) {
+      blocking_thread->effective_priority = thread_current()->effective_priority;
       if (blocking_thread->status == THREAD_READY) {
         sort_ready_list_priority();
         break;
@@ -385,22 +387,29 @@ handle_lock_block(struct lock *lock) {
 
 void
 handle_lock_release(struct lock *lock) {
-  int new_priority = PRI_MIN;
   struct lock *cur_lock;
-  int cur_priority = 0;
-
-  struct list_elem *lock_it = list_begin(&thread_current()->owned_locks);
-  while (lock_it != list_end(&thread_current()->owned_locks)) {
+  for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); lock_it != list_end(&thread_current()->owned_locks); lock_it = list_next(lock_it)) {
     cur_lock = list_entry(lock_it, struct lock, elem);
     if(cur_lock == lock){
       //if on lock that removing, remove it
-      lock_it = list_remove(lock_it);
+      list_remove(lock_it);
+      break;
     }
-    cur_priority = list_entry(list_max(&cur_lock->semaphore.waiters, compare_thread_priority, NULL), struct thread, elem)->practical_priority;
-    new_priority = (cur_priority > new_priority) ? cur_priority : new_priority;
-    lock_it = list_next(lock_it);
   }
-  if(new_priority > thread_current()->priority) thread_set_priority(new_priority);
-  yield_if_priority_change();
+  calculate_thread_effective_priority();
+  return;
+}
+
+void
+calculate_thread_effective_priority (void) {
+  struct lock *cur_lock;
+  int cur_priority = PRI_MIN;
+  thread_current()->effective_priority = thread_current()->priority;
+
+  for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); lock_it != list_end(&thread_current()->owned_locks); lock_it = list_next(lock_it)) {
+    cur_lock = list_entry(lock_it, struct lock, elem);
+    cur_priority = list_entry(list_max(&cur_lock->semaphore.waiters, compare_thread_priority, NULL), struct thread, elem)->effective_priority;
+    if (cur_priority > thread_current()->effective_priority) thread_current()->effective_priority = cur_priority;
+  }
   return;
 }

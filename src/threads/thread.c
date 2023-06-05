@@ -200,6 +200,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  thread_yield();
 
   return tid;
 }
@@ -337,11 +338,9 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current()->priority = new_priority;
-  if (new_priority > thread_get_priority) {
-    thread_current()->practical_priority = new_priority;
-    //need to check if yielding due to potentially new priority hierarchy
-    yield_if_priority_change();
-  }
+  calculate_thread_effective_priority();
+  thread_yield();
+  sort_ready_list_priority();
   return;
 }
 
@@ -349,7 +348,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->practical_priority;
+  return thread_current ()->effective_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -471,7 +470,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   
-  t->practical_priority = priority;
+  t->effective_priority = priority;
   list_init(&t->owned_locks);
   t->blocking_lock = NULL;
 
@@ -601,22 +600,13 @@ compare_thread_priority(const struct list_elem *a, const struct list_elem *b, vo
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
 
+  (void)aux;
+
   /* Return a boolean comparator of the two threads' awake_time values */
-  return thread_a->practical_priority > thread_b->practical_priority;
+  return thread_a->effective_priority > thread_b->effective_priority;
 }
 
 void
 sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
-}
-
-/*Function yields if there has been a change in the priority hierarchy*/
-void 
-yield_if_priority_change(void) {
-  if(list_empty(&ready_list)) return;
-  if(thread_get_priority > 
-    list_entry(list_front(&ready_list), struct thread, elem)->practical_priority){
-      thread_yield();
-    }
-  return;
 }

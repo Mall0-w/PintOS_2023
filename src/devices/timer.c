@@ -270,6 +270,8 @@ awake_time_compare(struct list_elem *a, struct list_elem *b, void* aux) {
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
 
+  (void)aux;
+
   /* Return a boolean comparator of the two threads' awake_time values */
   return thread_a->awake_time < thread_b->awake_time;
 }
