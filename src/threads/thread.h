@@ -141,6 +141,7 @@ void thread_set_priority (int);
 
 bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux);
 void sort_ready_list_priority(void);
+void handle_lock_acquire(struct lock *lock);
 void handle_lock_block(struct lock *lock);
 void handle_lock_release(struct lock *lock);
 void calculate_thread_effective_priority (void);

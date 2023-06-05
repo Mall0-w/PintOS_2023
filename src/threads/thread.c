@@ -606,25 +606,39 @@ compare_thread_priority(const struct list_elem *a, const struct list_elem *b, vo
   return thread_a->effective_priority > thread_b->effective_priority;
 }
 
+/* Sort the ready list */
 void
 sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
 }
 
+/* Handle lock fields after being acquired */
+void
+handle_lock_acquire(struct lock *lock) {
+  lock->holder = thread_current();
+  lock->holder->blocking_lock = NULL;
+  /* Add lock to the current thread's owned_locks list */
+  list_push_back(&thread_current()->owned_locks, &lock->elem);
+}
+
+/* Handle priority donations when lock blocks other threads */
 void
 handle_lock_block(struct lock *lock) {
   thread_current()->blocking_lock = lock;
   struct thread *blocking_thread = lock->holder;
 
+  /* Iterate until the DEPTH_LIMIT or there's no longer a blocking thread */
   for (int i = 0; i < DEPTH_LIMIT && blocking_thread != NULL; i++) {
     if (blocking_thread->effective_priority < thread_current()->effective_priority) {
       blocking_thread->effective_priority = thread_current()->effective_priority;
+      /* Check if the blocking thread is in the ready list */
       if (blocking_thread->status == THREAD_READY) {
         sort_ready_list_priority();
         break;
       }
     }
     if(blocking_thread->blocking_lock != NULL) {
+        /* Go one blocking thread deeper */
         blocking_thread = blocking_thread->blocking_lock->holder;
     } else {
       break;
@@ -633,9 +647,11 @@ handle_lock_block(struct lock *lock) {
   return;
 }
 
+/* Handle priority donations when lock is released */
 void
 handle_lock_release(struct lock *lock) {
   struct lock *cur_lock;
+  /* Iterate through owned locks */
   for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); lock_it != list_end(&thread_current()->owned_locks); lock_it = list_next(lock_it)) {
     cur_lock = list_entry(lock_it, struct lock, elem);
     if(cur_lock == lock){
@@ -648,15 +664,18 @@ handle_lock_release(struct lock *lock) {
   return;
 }
 
+/* Update the current thread's effective_priority */
 void
 calculate_thread_effective_priority (void) {
   struct lock *cur_lock;
   int cur_priority = PRI_MIN;
   thread_current()->effective_priority = thread_current()->priority;
 
+  /* Iterate through owned locks */
   for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); lock_it != list_end(&thread_current()->owned_locks); lock_it = list_next(lock_it)) {
     cur_lock = list_entry(lock_it, struct lock, elem);
     cur_priority = list_entry(list_max(&cur_lock->semaphore.waiters, compare_thread_priority, NULL), struct thread, elem)->effective_priority;
+    /* Update effective priority if higher priority is found in waiters for the lock */
     if (cur_priority > thread_current()->effective_priority) thread_current()->effective_priority = cur_priority;
   }
   return;
