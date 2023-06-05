@@ -612,15 +612,6 @@ sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
 }
 
-/* Handle lock fields after being acquired */
-void
-handle_lock_acquire(struct lock *lock) {
-  lock->holder = thread_current();
-  lock->holder->blocking_lock = NULL;
-  /* Add lock to the current thread's owned_locks list */
-  list_push_back(&thread_current()->owned_locks, &lock->elem);
-}
-
 /* Handle priority donations when lock blocks other threads */
 void
 handle_lock_block(struct lock *lock) {
