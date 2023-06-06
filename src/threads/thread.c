@@ -54,8 +54,6 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
-#define MAX_DONATIONS 8         /* depth limit of donations (8 is reasonable according to handout)*/
-
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -202,6 +200,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  thread_yield();
 
   return tid;
 }
@@ -240,21 +239,9 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   //priority scheduling so insert into ready list based off priority
-  list_insert_ordered(&ready_list, &t->elem, thread_order_priority, NULL);
+  list_insert_ordered(&ready_list, &t->elem, compare_thread_priority, NULL);
   t->status = THREAD_READY;
-
-  //if unblocked thread trumps hierarchy
-  if(t->borrowed_priority > thread_current()->borrowed_priority){
-    //check if external interrupt is happening and yield accordingly
-    if(intr_context()){
-      intr_yield_on_return();
-    }else{
-      thread_yield();
-    }
-  }
-
   intr_set_level (old_level);
-  
 }
 
 /* Returns the name of the running thread. */
@@ -316,16 +303,15 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  struct thread *cur = thread_current ();
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (thread_current() != idle_thread) 
     //priority scheduling so insert into ready list based off priority
-    list_insert_ordered(&ready_list, &cur->elem, thread_order_priority, NULL);
-  cur->status = THREAD_READY;
+    list_insert_ordered(&ready_list, &thread_current()->elem, compare_thread_priority, NULL);
+  thread_current()->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
 }
@@ -351,13 +337,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  //if new_priority is also higher than borrowed priority set it
-  thread_current ()->priority = new_priority;
-  if(new_priority > thread_current()->borrowed_priority){
-    thread_current()->borrowed_priority = new_priority;
-  }
-  //need to check if yielding due to potentially new priority hierarchy
-  yield_if_priority_change();
+  thread_current()->priority = new_priority;
+  calculate_thread_effective_priority();
+  thread_yield();
+  sort_ready_list_priority();
   return;
 }
 
@@ -365,136 +348,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->borrowed_priority;
-}
-
-/*Function used to sort ready list in ascending order of priority*/
-bool thread_order_priority(const struct list_elem* thread1, const struct list_elem* thread2, void* aux UNUSED){
-  return list_entry(thread1, struct thread, elem)->borrowed_priority <= list_entry(thread2, struct thread, elem)->borrowed_priority;
-}
-
-/*Function yields if there ha been a change in the priority hierarchy*/
-void yield_if_priority_change(){
-  if(list_empty(&ready_list)) return;
-
-  if(thread_current()->borrowed_priority < 
-    list_entry(list_back(&ready_list), struct thread, elem)->borrowed_priority){
-      thread_yield();
-    }
-  return;
-}
-
-/*Function called to handle ownership after thread has acquired a lock*/
-void lock_secured(struct lock* lock){
-  ASSERT(lock->holder == thread_current());
-
-  thread_current()->blocking_lock = NULL;
-  list_push_front(&thread_current()->owned_locks, &lock->elem);
-
-  return;
-}
-
-/*Function called to handle ownership in temrs of release of a lock*/
-void lock_dropped(struct lock* lock){
-  ASSERT(lock->holder != thread_current());
-
-  //iterate through list of held locks to remove current lock
-  //also want to readjust priority borrowing
-  int borrowed_priority = PRI_MIN;
-
-  //blocking interrupts jsut in case race condition
-  enum intr_level old_level = intr_disable();
-  //creating variables outside of loop to prevent overflow
-  
-  //lock struct of current elem
-  struct lock* current_lock;
-  //list_elem for highest priority waiting thread on current_lock
-  struct list_elem* max_elem;
-  struct thread* highest_thread; //thread struct of max_elem
-
-  struct list_elem* curr = list_begin(&thread_current()->owned_locks);
-  while(curr != list_end(&thread_current()->owned_locks)){
-    
-    current_lock = list_entry(curr, struct lock, elem);
-    if(current_lock == lock){
-      //if on lock that removing, remove it and continue
-      curr = list_remove(curr);
-      continue;
-    }
-    //get highest priority thread waiting on current lock
-    max_elem = list_max(&current_lock->semaphore.waiters, thread_order_priority, NULL);
-    //ensuring the max_elem isn't the current highest priority thread to avoid issues
-    if(max_elem != list_end(&current_lock->semaphore.waiters)){
-      highest_thread = list_entry(max_elem, struct thread, elem);
-    }else{
-      highest_thread = NULL;
-    }
-
-    if(highest_thread != NULL && highest_thread->borrowed_priority > borrowed_priority){
-      borrowed_priority = highest_thread->borrowed_priority;
-    }
-    curr = list_next(curr);
-  }
-
-  //now that done readjusting the list, see if priorities need to be changed for current thread
-  //we'd set to borrowed priority if its higher than normal priority since we know
-  //its the highest priority borrowing, otherwise cap at normal priority
-  if(borrowed_priority > thread_current()->priority){
-    thread_current()->borrowed_priority = borrowed_priority;
-  }else{
-    thread_current()->borrowed_priority = thread_current()->priority;
-  }
-  intr_set_level(old_level);
-  //see if yielding because of priority changes
-  yield_if_priority_change();
-
-  return;
-}
-
-/*function called to handle the ownership and blocking caused
-  by lock blocking a thread, also handles priority donation*/
-void lock_gonna_block(struct lock* lock){
-  ASSERT(lock->holder != thread_current());
-  int iterations = 0;
-  struct thread* blocking_thread = lock->holder;
-
-  //disabling interrupts just to avoid potential interrupts since
-  //incrementing is scary now
-  enum intr_level old_level = intr_disable();
-
-  //donate priority upwards until reach max iterations
-  //or until reaching a thread that isn't blocked
-  while(iterations < MAX_DONATIONS && blocking_thread != NULL){
-
-    //donate priority if better
-    if((blocking_thread->status == THREAD_READY || blocking_thread->status == THREAD_BLOCKED) && 
-      blocking_thread->borrowed_priority < thread_current()->borrowed_priority){
-        blocking_thread->borrowed_priority = thread_current()->borrowed_priority;
-    }
-    //hypothetically only thread statuses should by ready or blocked
-    //since a dying thread should be counted and running thread executed the block
-    //but just in case only doing logic for blocked and ready
-    if(blocking_thread->status == THREAD_READY){
-      //since its a ready we now have to resort the ready queue
-      //since priority may have changed
-      list_sort(&ready_list, thread_order_priority, NULL);
-      //since ready thread, don't have to go up chain of blocked threads anymore
-      break;
-    }else if(blocking_thread->status == THREAD_BLOCKED){
-      //iterate to next blocking thread
-      if(blocking_thread->blocking_lock != NULL){
-        blocking_thread = blocking_thread->blocking_lock->holder;
-      }else{
-        //no more chain of blocked threads since its not blocked by a lock
-        break;
-      }
-    }
-    iterations++;
-  }
-  thread_current()->blocking_lock = lock;
-  //now that done renable interrupts
-  intr_set_level(old_level);
-  //DON'T YIELD SINCE WE'RE ABOUT TO BLOCK ANYWAYS
+  return thread_current ()->effective_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -614,10 +468,11 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->borrowed_priority = priority;
+  t->magic = THREAD_MAGIC;
+  
+  t->effective_priority = priority;
   list_init(&t->owned_locks);
   t->blocking_lock = NULL;
-  t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -649,7 +504,7 @@ next_thread_to_run (void)
     return idle_thread;
   else
     //ready list sorted in order of ascending priority so pop back
-    return list_entry (list_pop_back(&ready_list), struct thread, elem);
+    return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -738,3 +593,90 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+bool 
+compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux) {
+  /* Convert list elements into respective thread */
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+
+  (void)aux;
+
+  /* Return a boolean comparator of the two threads' awake_time values */
+  return thread_a->effective_priority > thread_b->effective_priority;
+}
+
+/* Sort the ready list */
+void
+sort_ready_list_priority(void) {
+  list_sort(&ready_list, compare_thread_priority, NULL);
+}
+
+/* Handle lock fields after being acquired */
+void
+handle_lock_acquire(struct lock *lock) {
+  lock->holder = thread_current();
+  lock->holder->blocking_lock = NULL;
+  /* Add lock to the current thread's owned_locks list */
+  list_push_back(&thread_current()->owned_locks, &lock->elem);
+}
+
+/* Handle priority donations when lock blocks other threads */
+void
+handle_lock_block(struct lock *lock) {
+  thread_current()->blocking_lock = lock;
+  struct thread *blocking_thread = lock->holder;
+
+  /* Iterate until the DEPTH_LIMIT or there's no longer a blocking thread */
+  for (int i = 0; i < DEPTH_LIMIT && blocking_thread != NULL; i++) {
+    if (blocking_thread->effective_priority < thread_current()->effective_priority) {
+      blocking_thread->effective_priority = thread_current()->effective_priority;
+      /* Check if the blocking thread is in the ready list */
+      if (blocking_thread->status == THREAD_READY) {
+        sort_ready_list_priority();
+        break;
+      }
+    }
+    if(blocking_thread->blocking_lock != NULL) {
+        /* Go one blocking thread deeper */
+        blocking_thread = blocking_thread->blocking_lock->holder;
+    } else {
+      break;
+    }
+  }
+  return;
+}
+
+/* Handle priority donations when lock is released */
+void
+handle_lock_release(struct lock *lock) {
+  struct lock *cur_lock;
+  /* Iterate through owned locks */
+  for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); lock_it != list_end(&thread_current()->owned_locks); lock_it = list_next(lock_it)) {
+    cur_lock = list_entry(lock_it, struct lock, elem);
+    if(cur_lock == lock){
+      //if on lock that removing, remove it
+      list_remove(lock_it);
+      break;
+    }
+  }
+  calculate_thread_effective_priority();
+  return;
+}
+
+/* Update the current thread's effective_priority */
+void
+calculate_thread_effective_priority (void) {
+  struct lock *cur_lock;
+  int cur_priority = PRI_MIN;
+  thread_current()->effective_priority = thread_current()->priority;
+
+  /* Iterate through owned locks */
+  for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); lock_it != list_end(&thread_current()->owned_locks); lock_it = list_next(lock_it)) {
+    cur_lock = list_entry(lock_it, struct lock, elem);
+    cur_priority = list_entry(list_max(&cur_lock->semaphore.waiters, compare_thread_priority, NULL), struct thread, elem)->effective_priority;
+    /* Update effective priority if higher priority is found in waiters for the lock */
+    if (cur_priority > thread_current()->effective_priority) thread_current()->effective_priority = cur_priority;
+  }
+  return;
+}
