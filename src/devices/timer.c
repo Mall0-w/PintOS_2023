@@ -90,17 +90,6 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-/* Checks if thread A's sleep tick is less than thread B's sleep tick*/
-bool 
-awake_time_compare(const struct list_elem *a, const struct list_elem *b) {
-  /* Convert list elements into respective thread */
-  struct thread *thread_a = list_entry(a, struct thread, elem);
-  struct thread *thread_b = list_entry(b, struct thread, elem);
-
-  /* Return a boolean comparator of the two threads' awake_time values */
-  return thread_a->awake_time < thread_b->awake_time;
-}
-
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
