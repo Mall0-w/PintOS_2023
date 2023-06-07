@@ -337,10 +337,17 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  struct lock lock;
+  lock_init(&lock);
+  lock_acquire(&lock);
+
   thread_current()->priority = new_priority;
   calculate_thread_effective_priority();
-  thread_yield();
   sort_ready_list_priority();
+
+  lock_release(&lock);
+
+  thread_yield();
   return;
 }
 
