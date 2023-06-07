@@ -5,7 +5,10 @@
 
 #define F 16384
 
-#define int_to_fp(n) (n*F)
+extern inline
+int int_to_fp (int n){
+    return n*F;
+}
 
 extern inline
 int fp_to_int (int n){
