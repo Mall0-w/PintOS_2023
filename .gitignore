@@ -58,3 +58,4 @@ Mkfile.old
 dkms.conf
 Dockerfile
 docker-compose.yml
+.github
