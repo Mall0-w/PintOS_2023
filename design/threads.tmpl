@@ -135,7 +135,7 @@ A function is called that will remove the lock from the current thread's owned_l
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
-Interrupts are disabled within thread_set_priority().
+The thread is locked during the critical section of thread_set_priority().
 
 ---- RATIONALE ----
 
