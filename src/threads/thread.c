@@ -337,10 +337,17 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  struct lock lock;
+  lock_init(&lock);
+  lock_acquire(&lock);
+
   thread_current()->priority = new_priority;
   calculate_thread_effective_priority();
-  thread_yield();
   sort_ready_list_priority();
+
+  lock_release(&lock);
+
+  thread_yield();
   return;
 }
 
@@ -610,15 +617,6 @@ compare_thread_priority(const struct list_elem *a, const struct list_elem *b, vo
 void
 sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
-}
-
-/* Handle lock fields after being acquired */
-void
-handle_lock_acquire(struct lock *lock) {
-  lock->holder = thread_current();
-  lock->holder->blocking_lock = NULL;
-  /* Add lock to the current thread's owned_locks list */
-  list_push_back(&thread_current()->owned_locks, &lock->elem);
 }
 
 /* Handle priority donations when lock blocks other threads */

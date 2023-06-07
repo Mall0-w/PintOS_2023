@@ -109,7 +109,6 @@ void
   thread_block();
   /* Enable interrupts back */
   intr_set_level(old_status);
-
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
