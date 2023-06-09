@@ -25,7 +25,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-static int load_avg;
+static int64_t load_avg;
 
 
 /* List of all processes.  Processes are added to this list
@@ -222,8 +222,12 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  thread_yield();
 
+  if (thread_mlfqs) {
+    if (t->priority > thread_current()->priority) thread_yield();
+  } else {
+    if (t->effective_priority > thread_current()->effective_priority) thread_yield();
+  }
   return tid;
 }
 
@@ -387,6 +391,7 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   thread_current ()->nice = nice;
+  calculate_thread_recent_cpu(thread_current(), NULL);
   calculate_thread_priority(thread_current(), NULL);
   thread_yield();
 }
@@ -741,16 +746,16 @@ calculate_thread_effective_priority (void) {
 void
 calculate_thread_load_avg(void) {
   if(thread_current() == idle_thread)  {
-    load_avg = int_to_fp(1) / 60 * list_size(&ready_list) + multiply_fp(int_to_fp(59) / 60, load_avg);
+    load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * list_size(&ready_list) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
   }
   else {
-    load_avg = int_to_fp(1) / 60 * (list_size(&ready_list) + 1) + multiply_fp(int_to_fp(59) / 60, load_avg);
+    load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * (list_size(&ready_list) + 1) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
   }
 }
 
 void
 increment_thread_recent_cpu(void) {
-  if(thread_current() == idle_thread) thread_current()->recent_cpu = add_n_to_fp(1, thread_current()->recent_cpu);
+  if(thread_current() == idle_thread) thread_current()->recent_cpu = thread_current()->recent_cpu + int_to_fp(1);
 }
 
 void
@@ -760,7 +765,7 @@ calculate_recent_cpu_for_all(void) {
 
 void
 calculate_thread_recent_cpu(struct thread *t, void *aux) {
-  t->recent_cpu = add_n_to_fp(t->nice, multiply_fp(divide_fp(2 * load_avg, add_n_to_fp(1, 2 * load_avg)), t->recent_cpu));
+  t->recent_cpu = multiply_fp(divide_fp(multiply_fp(int_to_fp(2), load_avg), multiply_fp(int_to_fp(2), load_avg) + int_to_fp(1)), t->recent_cpu) + int_to_fp(t->nice);
 
   (void)aux;
 }
@@ -772,7 +777,7 @@ calculate_thread_priority_for_all(void) {
 
 void
 calculate_thread_priority(struct thread *t, void *aux) {
-  int priority = fp_to_int_truncated(subtract_n_from_fp(thread_current()->nice * 2, subtract_fp_from_n(PRI_MAX, (thread_current()->recent_cpu / 4))));
+  int priority = fp_to_int_truncated(int_to_fp(PRI_MAX) - divide_fp(thread_current()->recent_cpu, int_to_fp(4)) - multiply_fp(thread_current()->nice, int_to_fp(2)));
 
   if (priority > PRI_MAX) priority = PRI_MAX;
   else if (priority < PRI_MIN) priority = PRI_MIN;
@@ -784,11 +789,10 @@ calculate_thread_priority(struct thread *t, void *aux) {
 
 void
 handle_mlfqs(void) {
-  //increment_thread_recent_cpu();
+  increment_thread_recent_cpu();
   if (timer_ticks() % PRIORITY_CALCULATE_TICK == 0) {
     calculate_thread_priority_for_all();
-    //sort_ready_list_priority();
-    
+    sort_ready_list_priority();
   }
   if (timer_ticks() % TIMER_FREQ == 0) {
     calculate_thread_load_avg();
