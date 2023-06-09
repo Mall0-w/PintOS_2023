@@ -223,12 +223,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
-  if (thread_mlfqs) {
-    if (t->priority > thread_current()->priority) thread_yield();
-  } else {
-    if (t->effective_priority > thread_current()->effective_priority) thread_yield();
-  }
+  
   return tid;
 }
 
@@ -404,7 +399,7 @@ thread_set_nice (int nice UNUSED)
   // Updates the thread's priority according to the new nice value
   calculate_thread_priority(thread_current(), NULL);
 
-  //lock_acquire(&lock);
+  // lock_acquire(&lock);
   // If new priority leads to current thread being not the highest priority, block it
   if(check_current_thread_priority_against_ready()) {
     //lock_release(&lock);
