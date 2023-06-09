@@ -26,7 +26,6 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 static int64_t load_avg;
-static int num_ready_list;
 
 
 /* List of all processes.  Processes are added to this list
@@ -134,7 +133,6 @@ thread_start (void)
   
   if(thread_mlfqs) {
     load_avg = int_to_fp(0); // Initialize load_avg to 0 if mlfqs is true
-    num_ready_list = 0;
   }
 
   /* Wait for the idle thread to initialize idle_thread. */
@@ -269,7 +267,6 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   //priority scheduling so insert into ready list based off priority
   list_insert_ordered(&ready_list, &t->elem, compare_thread_priority, NULL);
-  num_ready_list++;
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -341,7 +338,6 @@ thread_yield (void)
   if (thread_current() != idle_thread) 
     //priority scheduling so insert into ready list based off priority
     list_insert_ordered(&ready_list, &thread_current()->elem, compare_thread_priority, NULL);
-    num_ready_list++;
   thread_current()->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -371,19 +367,22 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs) return;
   struct lock lock;
   lock_init(&lock);
-  lock_acquire(&lock);
 
   thread_current()->priority = new_priority;
-  calculate_thread_effective_priority();
-  sort_ready_list_priority();
 
-  lock_release(&lock);
+  lock_acquire(&lock);
+
+  calculate_thread_effective_priority();
 
   if(check_current_thread_priority_against_ready()) {
+    lock_release(&lock);
     thread_yield();
+  } else {
+    lock_release(&lock);
   }
   return;
 }
+
 
 /* Returns the current thread's priority. */
 int
@@ -397,12 +396,23 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
+  //struct lock lock;
+  //lock_init(&lock);
+  
+  // Sets the current thread's nice value to the new nice value
   thread_current ()->nice = nice;
+  // Updates the thread's priority according to the new nice value
   calculate_thread_priority(thread_current(), NULL);
+
+  //lock_acquire(&lock);
+  // If new priority leads to current thread being not the highest priority, block it
   if(check_current_thread_priority_against_ready()) {
+    //lock_release(&lock);
     thread_yield();
+  } else {
+    //lock_release(&lock);
   }
-  sort_ready_list_priority();
+  return;
 }
 
 /* Returns the current thread's nice value. */
@@ -519,6 +529,7 @@ init_thread (struct thread *t, const char *name, int priority)
     if(strcmp(name, "main") == 0) {
       t->nice = 0;
       t->recent_cpu = 0;
+    // Inherits nice and recent_cpu values from parent
     } else {
       t->nice = thread_current()->nice;
       t->recent_cpu = thread_current()->recent_cpu;
@@ -560,7 +571,6 @@ next_thread_to_run (void)
     return idle_thread;
   else
     //ready list sorted in order of ascending priority so pop back
-    num_ready_list--;
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
@@ -761,7 +771,8 @@ calculate_thread_effective_priority (void) {
 
 void
 calculate_thread_load_avg(void) {
-  int num_running_threads = thread_current() == idle_thread ? num_ready_list : num_ready_list + 1;
+  // Idle thread shouldn't count as a ready/running thread
+  int num_running_threads = thread_current() == idle_thread ? list_size(&ready_list) : list_size(&ready_list) + 1;
   load_avg = multiply_fp(divide_fp(int_to_fp(1), int_to_fp(60)), int_to_fp(num_running_threads)) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
 }
 
@@ -799,13 +810,15 @@ calculate_thread_priority(struct thread *t, void *aux) {
   (void)aux;
 }
 
-
+/* Handle updates to niceness, recent_cpu, and load_avg*/
 void
 handle_mlfqs(void) {
   increment_thread_recent_cpu();
+  //int curr_timer_ticks = thread_ticks;
   int64_t curr_timer_ticks = timer_ticks();
-
+  // Every 4 ticks
   if (curr_timer_ticks % PRIORITY_CALCULATE_TICK == 0) {
+    // Every second
     if (curr_timer_ticks % TIMER_FREQ == 0) {
       calculate_thread_load_avg();
       calculate_recent_cpu_for_all();
