@@ -757,7 +757,7 @@ calculate_thread_effective_priority (void) {
 void
 calculate_thread_load_avg(void) {
   int num_running_threads = thread_current() == idle_thread ? list_size(&ready_list) : list_size(&ready_list) + 1;
-  load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * (num_running_threads) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
+  load_avg = multiply_fp(divide_fp(int_to_fp(1), int_to_fp(60)), int_to_fp(num_running_threads)) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
 }
 
 void
@@ -784,7 +784,7 @@ calculate_thread_priority_for_all(void) {
 
 void
 calculate_thread_priority(struct thread *t, void *aux) {
-  int priority = fp_to_int_truncated(int_to_fp(PRI_MAX) - divide_fp(t->recent_cpu, int_to_fp(4)) - multiply_fp(t->nice, int_to_fp(2)));
+  int priority = fp_to_int_truncated(int_to_fp(PRI_MAX) - divide_fp(t->recent_cpu, int_to_fp(4)) - multiply_fp(int_to_fp(t->nice), int_to_fp(2)));
 
   if (priority > PRI_MAX) priority = PRI_MAX;
   else if (priority < PRI_MIN) priority = PRI_MIN;
