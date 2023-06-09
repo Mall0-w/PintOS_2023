@@ -398,11 +398,11 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   thread_current ()->nice = nice;
-  calculate_thread_recent_cpu(thread_current(), NULL);
   calculate_thread_priority(thread_current(), NULL);
   if(check_current_thread_priority_against_ready()) {
     thread_yield();
   }
+  sort_ready_list_priority();
 }
 
 /* Returns the current thread's nice value. */
