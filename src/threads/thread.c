@@ -87,6 +87,7 @@ void calculate_thread_recent_cpu(struct thread *t, void *aux);
 void calculate_thread_priority_for_all(void);
 void calculate_thread_priority(struct thread *t, void *aux);
 void handle_mlfqs(void);
+bool check_current_thread_priority_against_ready(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -374,7 +375,9 @@ thread_set_priority (int new_priority)
 
   lock_release(&lock);
 
-  thread_yield();
+  if(check_current_thread_priority_against_ready()) {
+    thread_yield();
+  }
   return;
 }
 
@@ -393,7 +396,9 @@ thread_set_nice (int nice UNUSED)
   thread_current ()->nice = nice;
   calculate_thread_recent_cpu(thread_current(), NULL);
   calculate_thread_priority(thread_current(), NULL);
-  thread_yield();
+  if(check_current_thread_priority_against_ready()) {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's nice value. */
@@ -676,6 +681,11 @@ sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
 }
 
+bool
+check_current_thread_priority_against_ready(void) {
+  return compare_thread_priority(&thread_current()->elem, list_begin(&ready_list), NULL);
+}
+
 /* Handle lock fields after being acquired */
 void
 handle_lock_acquire(struct lock *lock) {
@@ -746,12 +756,8 @@ calculate_thread_effective_priority (void) {
 
 void
 calculate_thread_load_avg(void) {
-  if(thread_current() == idle_thread)  {
-    load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * list_size(&ready_list) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
-  }
-  else {
-    load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * (list_size(&ready_list) + 1) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
-  }
+  int num_running_threads = thread_current() == idle_thread ? list_size(&ready_list) : list_size(&ready_list) + 1;
+  load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * (num_running_threads) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
 }
 
 void
@@ -787,6 +793,7 @@ calculate_thread_priority(struct thread *t, void *aux) {
 
   (void)aux;
 }
+
 
 void
 handle_mlfqs(void) {
