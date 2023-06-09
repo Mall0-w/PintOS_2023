@@ -32,6 +32,8 @@ static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 static struct list blocked_thread_list;
 
+void awaken_threads(void);
+
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -109,7 +111,6 @@ void
   thread_block();
   /* Enable interrupts back */
   intr_set_level(old_status);
-
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -191,7 +192,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
 }
 
-
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
 static bool
@@ -263,20 +263,9 @@ real_time_delay (int64_t num, int32_t denom)
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
 
-/* Checks if thread A's sleep tick is less than thread B's sleep tick*/
-bool 
-awake_time_compare(struct list_elem *a, struct list_elem *b, void* aux) {
-  /* Convert list elements into respective thread */
-  struct thread *thread_a = list_entry(a, struct thread, elem);
-  struct thread *thread_b = list_entry(b, struct thread, elem);
-
-  /* Return a boolean comparator of the two threads' awake_time values */
-  return thread_a->awake_time < thread_b->awake_time;
-}
-
 /* Wakes all sleeping threads that need to wake up */
 void 
-awaken_threads() {
+awaken_threads(void) {
   // Check through blocked lists if any thread is ready to wake up
   while(!list_empty(&blocked_thread_list)) {
     // Gets the element from the head of the list and converts it to a thread
@@ -291,4 +280,5 @@ awaken_threads() {
       break;
     }
   }
+  return;
 }
