@@ -200,14 +200,18 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+
   /* Check if semaphore is decremented */
   if(!sema_try_down(&lock->semaphore)) {
     /* Handle priority donations when lock blocks other threads */
-    handle_lock_block(lock);
+    if (!thread_mlfqs)
+      handle_lock_block(lock);
     sema_down (&lock->semaphore);
   }
-  /* Handle lock fields after being acquired */
-  handle_lock_acquire(lock);
+  lock->holder = thread_current();
+  if (!thread_mlfqs)
+    /* Handle lock fields after being acquired */
+    handle_lock_acquire(lock);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -242,7 +246,8 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   /* Handle priority donations when lock is released */
-  handle_lock_release(lock);
+  if (!thread_mlfqs)
+    handle_lock_release(lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);

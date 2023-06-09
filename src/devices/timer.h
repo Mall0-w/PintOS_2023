@@ -28,7 +28,4 @@ void timer_ndelay (int64_t nanoseconds);
 
 void timer_print_stats (void);
 
-bool awake_time_compare(struct list_elem *a, struct list_elem *b, void* aux);
-void awaken_threads(void);
-
 #endif /* devices/timer.h */
