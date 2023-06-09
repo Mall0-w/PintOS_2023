@@ -30,7 +30,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-static struct list blocked_thread_list;
+static struct list sleeping_thread_list;
 
 void awaken_threads(void);
 
@@ -43,7 +43,7 @@ timer_init (void)
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 
-  list_init(&blocked_thread_list);
+  list_init(&sleeping_thread_list);
 }
 
 
@@ -106,7 +106,7 @@ void
   /* Disables interrupts to avoid concurrency issues */
   enum intr_level old_status = intr_disable();
   /* Insert current thread into a list of blocked threads sorted by awake_time value */
-  list_insert_ordered(&blocked_thread_list, &cur->elem, (list_less_func *) &awake_time_compare, NULL);
+  list_insert_ordered(&sleeping_thread_list, &cur->elem, (list_less_func *) &awake_time_compare, NULL);
   /* Block the current thread */
   thread_block();
   /* Enable interrupts back */
@@ -265,14 +265,14 @@ real_time_delay (int64_t num, int32_t denom)
 
 /* Wakes all sleeping threads that need to wake up */
 void 
-awaken_threads(void) {
+awaken_threads() {
   // Check through blocked lists if any thread is ready to wake up
-  while(!list_empty(&blocked_thread_list)) {
+  while(!list_empty(&sleeping_thread_list)) {
     // Gets the element from the head of the list and converts it to a thread
-    struct thread *thread = list_entry(list_front(&blocked_thread_list), struct thread, elem);
+    struct thread *thread = list_entry(list_front(&sleeping_thread_list), struct thread, elem);
     // If the thread's awake_time is less than the current ticks, wake up thread due to alarm
     if(thread->awake_time <= timer_ticks()) {
-      list_pop_front(&blocked_thread_list);
+      list_pop_front(&sleeping_thread_list);
       thread_unblock(thread);
     } else {
       // If the head's thread is not ready to wake up, every element after must also be not ready
@@ -280,5 +280,4 @@ awaken_threads(void) {
       break;
     }
   }
-  return;
 }
