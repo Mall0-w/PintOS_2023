@@ -223,7 +223,6 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  thread_yield();
 
   if (thread_mlfqs) {
     if (t->priority > thread_current()->priority) thread_yield();
@@ -267,7 +266,6 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   //priority scheduling so insert into ready list based off priority
-  list_insert_ordered(&ready_list, &t->elem, compare_thread_priority, NULL);
   list_insert_ordered(&ready_list, &t->elem, compare_thread_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -543,21 +541,6 @@ init_thread (struct thread *t, const char *name, int priority)
     t->blocking_lock = NULL;
   } 
 
-  if(thread_mlfqs) {
-    // If current thread is the main thread, make nice 0 
-    if(strcmp(name, "main") == 0) {
-      t->nice = 0;
-      t->recent_cpu = 0;
-    } else {
-      t->nice = thread_current()->nice;
-      t->recent_cpu = thread_current()->recent_cpu;
-    }
-  } else {
-    t->effective_priority = priority;
-    list_init(&t->owned_locks);
-    t->blocking_lock = NULL;
-  } 
-
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -786,6 +769,8 @@ calculate_thread_effective_priority (void) {
   return;
 }
 
+/* Advanced Scheduler Functions */
+
 void
 calculate_thread_load_avg(void) {
   // Idle thread shouldn't count as a ready/running thread
@@ -801,6 +786,7 @@ increment_thread_recent_cpu(void) {
 void
 calculate_recent_cpu_for_all(void) {
   thread_foreach(calculate_thread_recent_cpu, NULL);
+  return;
 }
 
 void
@@ -808,11 +794,13 @@ calculate_thread_recent_cpu(struct thread *t, void *aux) {
   t->recent_cpu = multiply_fp(divide_fp(multiply_fp(int_to_fp(2), load_avg), multiply_fp(int_to_fp(2), load_avg) + int_to_fp(1)), t->recent_cpu) + int_to_fp(t->nice);
 
   (void)aux;
+  return;
 }
 
 void
 calculate_thread_priority_for_all(void) {
   thread_foreach(calculate_thread_priority, NULL);
+  return;
 }
 
 void
@@ -825,6 +813,7 @@ calculate_thread_priority(struct thread *t, void *aux) {
   t->priority = priority;
 
   (void)aux;
+  return;
 }
 
 /* Handle updates to niceness, recent_cpu, and load_avg*/

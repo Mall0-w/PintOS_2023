@@ -265,7 +265,7 @@ real_time_delay (int64_t num, int32_t denom)
 
 /* Wakes all sleeping threads that need to wake up */
 void 
-awaken_threads() {
+awaken_threads(void) {
   // Check through blocked lists if any thread is ready to wake up
   while(!list_empty(&blocked_thread_list)) {
     // Gets the element from the head of the list and converts it to a thread
@@ -280,4 +280,5 @@ awaken_threads() {
       break;
     }
   }
+  return;
 }
