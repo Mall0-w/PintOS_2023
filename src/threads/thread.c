@@ -87,6 +87,7 @@ void calculate_thread_recent_cpu(struct thread *t, void *aux);
 void calculate_thread_priority_for_all(void);
 void calculate_thread_priority(struct thread *t, void *aux);
 void handle_mlfqs(void);
+bool check_current_thread_priority_against_ready(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -368,17 +369,22 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs) return;
   struct lock lock;
   lock_init(&lock);
-  lock_acquire(&lock);
 
   thread_current()->priority = new_priority;
+
+  lock_acquire(&lock);
+
   calculate_thread_effective_priority();
-  sort_ready_list_priority();
 
-  lock_release(&lock);
-
-  thread_yield();
+  if(check_current_thread_priority_against_ready()) {
+    lock_release(&lock);
+    thread_yield();
+  } else {
+    lock_release(&lock);
+  }
   return;
 }
+
 
 /* Returns the current thread's priority. */
 int
@@ -392,10 +398,23 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
+  //struct lock lock;
+  //lock_init(&lock);
+  
+  // Sets the current thread's nice value to the new nice value
   thread_current ()->nice = nice;
-  calculate_thread_recent_cpu(thread_current(), NULL);
+  // Updates the thread's priority according to the new nice value
   calculate_thread_priority(thread_current(), NULL);
-  thread_yield();
+
+  //lock_acquire(&lock);
+  // If new priority leads to current thread being not the highest priority, block it
+  if(check_current_thread_priority_against_ready()) {
+    //lock_release(&lock);
+    thread_yield();
+  } else {
+    //lock_release(&lock);
+  }
+  return;
 }
 
 /* Returns the current thread's nice value. */
@@ -512,10 +531,12 @@ init_thread (struct thread *t, const char *name, int priority)
     if(strcmp(name, "main") == 0) {
       t->nice = 0;
       t->recent_cpu = 0;
+    // Inherits nice and recent_cpu values from parent
     } else {
       t->nice = thread_current()->nice;
       t->recent_cpu = thread_current()->recent_cpu;
     }
+    calculate_thread_priority(t, NULL);
   } else {
     t->effective_priority = priority;
     list_init(&t->owned_locks);
@@ -692,6 +713,11 @@ sort_ready_list_priority(void) {
   list_sort(&ready_list, compare_thread_priority, NULL);
 }
 
+bool
+check_current_thread_priority_against_ready(void) {
+  return compare_thread_priority(&thread_current()->elem, list_begin(&ready_list), NULL);
+}
+
 /* Handle lock fields after being acquired */
 void
 handle_lock_acquire(struct lock *lock) {
@@ -762,17 +788,14 @@ calculate_thread_effective_priority (void) {
 
 void
 calculate_thread_load_avg(void) {
-  if(thread_current() == idle_thread)  {
-    load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * list_size(&ready_list) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
-  }
-  else {
-    load_avg = divide_fp(int_to_fp(1), int_to_fp(60)) * (list_size(&ready_list) + 1) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
-  }
+  // Idle thread shouldn't count as a ready/running thread
+  int num_running_threads = thread_current() == idle_thread ? list_size(&ready_list) : list_size(&ready_list) + 1;
+  load_avg = multiply_fp(divide_fp(int_to_fp(1), int_to_fp(60)), int_to_fp(num_running_threads)) + multiply_fp(divide_fp(int_to_fp(59), int_to_fp(60)), load_avg);
 }
 
 void
 increment_thread_recent_cpu(void) {
-  if(thread_current() == idle_thread) thread_current()->recent_cpu = thread_current()->recent_cpu + int_to_fp(1);
+  if(thread_current() != idle_thread) thread_current()->recent_cpu = thread_current()->recent_cpu + int_to_fp(1);
 }
 
 void
@@ -794,7 +817,7 @@ calculate_thread_priority_for_all(void) {
 
 void
 calculate_thread_priority(struct thread *t, void *aux) {
-  int priority = fp_to_int_truncated(int_to_fp(PRI_MAX) - divide_fp(thread_current()->recent_cpu, int_to_fp(4)) - multiply_fp(thread_current()->nice, int_to_fp(2)));
+  int priority = fp_to_int_truncated(int_to_fp(PRI_MAX) - divide_fp(t->recent_cpu, int_to_fp(4)) - multiply_fp(int_to_fp(t->nice), int_to_fp(2)));
 
   if (priority > PRI_MAX) priority = PRI_MAX;
   else if (priority < PRI_MIN) priority = PRI_MIN;
@@ -804,15 +827,20 @@ calculate_thread_priority(struct thread *t, void *aux) {
   (void)aux;
 }
 
+/* Handle updates to niceness, recent_cpu, and load_avg*/
 void
 handle_mlfqs(void) {
   increment_thread_recent_cpu();
-  if (timer_ticks() % PRIORITY_CALCULATE_TICK == 0) {
+  //int curr_timer_ticks = thread_ticks;
+  int64_t curr_timer_ticks = timer_ticks();
+  // Every 4 ticks
+  if (curr_timer_ticks % PRIORITY_CALCULATE_TICK == 0) {
+    // Every second
+    if (curr_timer_ticks % TIMER_FREQ == 0) {
+      calculate_thread_load_avg();
+      calculate_recent_cpu_for_all();
+    }
     calculate_thread_priority_for_all();
     sort_ready_list_priority();
-  }
-  if (timer_ticks() % TIMER_FREQ == 0) {
-    calculate_thread_load_avg();
-    calculate_recent_cpu_for_all();
   }
 }

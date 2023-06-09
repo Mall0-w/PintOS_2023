@@ -24,21 +24,6 @@ int fp_to_int_rounded (int64_t x){
 }
 
 static inline
-int64_t add_n_to_fp (int n, int64_t x) {
-    return x + n * F;
-}
-
-static inline
-int64_t subtract_n_from_fp(int n, int64_t x) {
-    return x - n * F;
-}
-
-static inline
-int64_t subtract_fp_from_n(int n, int64_t x) {
-    return n * F - x;
-}
-
-static inline
 int64_t multiply_fp(int64_t x, int64_t y){
     return ((int64_t) x) * y / F;
 }
