@@ -212,7 +212,7 @@ lock_acquire (struct lock *lock)
   lock->holder = thread_current();
   lock->holder->blocking_lock = NULL;
   /* Add lock to the current thread's owned_locks list */
-  if(!thread_mlfqs) list_push_back(&thread_current()->owned_locks, &lock->elem);
+  list_push_back(&thread_current()->owned_locks, &lock->elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false

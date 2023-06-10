@@ -27,9 +27,6 @@ typedef int tid_t;
 /* Limit on depth of nested priority donation */
 #define DEPTH_LIMIT 8
 
-/* Tick interval length for resetting priority and recent_cpu within mlfq*/
-#define PRIORITY_RESET_TICKS 4
-
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -101,8 +98,6 @@ struct thread
     int64_t awake_time;                /* Time that thread will wake up. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    int niceness;                      /* Niceness of a thread, kept as a fixed-point number*/
-    int recent_cpu;                       /* Recent cpu of a thread, kept as a fixed-point number*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -117,9 +112,6 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-
-/*average system load time for a thread, kepts as a fixed-point number*/
-extern int load_avg;
 
 void thread_init (void);
 void thread_start (void);
@@ -157,11 +149,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
-int calculate_thread_mlfq_priority(struct thread* t);
-int calculate_recent_cpu(struct thread* t);
-void update_priority_and_cpu(struct thread* t, void* aux UNUSED);
-
-
 
 #endif /* threads/thread.h */
