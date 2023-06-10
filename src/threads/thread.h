@@ -96,7 +96,7 @@ struct thread
     struct lock *blocking_lock;         /* Lock that is blocking thread */
     struct list owned_locks;            /* List of locks the thread owns */
     int nice;                           /* Nice value for mlfqs */ 
-    int64_t recent_cpu;                 /* How much CPU time thread has received recently */
+    int recent_cpu;                 /* How much CPU time thread has received recently */
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t awake_time;                /* Time that thread will wake up. */
     /* Shared between thread.c and synch.c. */
@@ -142,9 +142,10 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
-bool awake_time_compare(struct list_elem *a, struct list_elem *b, void* aux);
-
+void thread_sleep(int64_t ticks, int64_t start);
+void awaken_threads(int64_t ticks);
 bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux);
+
 void handle_lock_acquire(struct lock *lock);
 void handle_lock_block(struct lock *lock);
 void handle_lock_release(struct lock *lock);
@@ -153,5 +154,6 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void handle_mlfqs(int64_t ticks);
 
 #endif /* threads/thread.h */
