@@ -83,7 +83,7 @@ void sort_ready_list_priority(void);
 bool check_current_thread_priority_against_ready(void);
 
 /* Alarm clock functions*/
-bool compare_thread_awake_time(struct list_elem *a, struct list_elem *b, void* aux);
+bool compare_thread_awake_time(const struct list_elem *a, const struct list_elem *b, void* aux);
 
 /* Priority donation functions */
 void calculate_thread_effective_priority (void);
@@ -558,6 +558,7 @@ alloc_frame (struct thread *t, size_t size)
   return t->stack;
 }
 
+
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -658,7 +659,7 @@ allocate_tid (void)
 
 /* Checks if thread A's sleep tick is less than thread B's sleep tick*/
 bool 
-compare_thread_awake_time(struct list_elem *a, struct list_elem *b, void* aux) {
+compare_thread_awake_time(const struct list_elem *a, const struct list_elem *b, void* aux) {
   /* Convert list elements into respective thread */
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
