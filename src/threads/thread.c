@@ -61,7 +61,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-static int load_avg;
+static int64_t load_avg;
 static struct list sleeping_thread_list;
   
 static void kernel_thread (thread_func *, void *aux);
@@ -527,8 +527,8 @@ init_thread (struct thread *t, const char *name, int priority)
       t->recent_cpu = 0;
     // Inherits nice and recent_cpu values from parent
     } else {
-      t->nice = thread_get_nice();
-      t->recent_cpu = thread_get_recent_cpu();
+      t->nice = thread_current()->nice;
+      t->recent_cpu = thread_current()->recent_cpu;
     }
     calculate_thread_priority(t, NULL);
   } else {
@@ -863,10 +863,11 @@ handle_mlfqs(int64_t ticks) {
   if (ticks % TIMER_FREQ == 0) {
     calculate_thread_load_avg();
     calculate_recent_cpu_for_all();
+    calculate_thread_priority_for_all();
   }
   // Every 4 ticks
   if (ticks % PRIORITY_CALCULATE_TICK == 0) {
-    calculate_thread_priority_for_all();
-    sort_ready_list_priority();
+    calculate_thread_priority(thread_current(), NULL);
+    //sort_ready_list_priority();
   }
 }

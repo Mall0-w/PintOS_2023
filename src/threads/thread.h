@@ -96,7 +96,7 @@ struct thread
     struct lock *blocking_lock;         /* Lock that is blocking thread */
     struct list owned_locks;            /* List of locks the thread owns */
     int nice;                           /* Nice value for mlfqs */ 
-    int recent_cpu;                 /* How much CPU time thread has received recently */
+    int64_t recent_cpu;                 /* How much CPU time thread has received recently */
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t awake_time;                /* Time that thread will wake up. */
     /* Shared between thread.c and synch.c. */

@@ -5,17 +5,17 @@
 
 #define F 16384
 
-static inline
+extern inline
 int64_t int_to_fp (int n){
     return n*F;
 }
 
-static inline
+extern inline
 int fp_to_int_truncated (int64_t x) {
     return x / F;
 }
 
-static inline
+extern inline
 int fp_to_int_rounded (int64_t x){
     int offset;
     if (x < 0) offset = -(F/2);
@@ -23,12 +23,12 @@ int fp_to_int_rounded (int64_t x){
     return (x + offset) / F;
 }
 
-static inline
+extern inline
 int64_t multiply_fp(int64_t x, int64_t y){
     return ((int64_t) x) * y / F;
 }
 
-static inline
+extern inline
 int64_t divide_fp(int64_t x, int64_t y){
     return ((int64_t) x) * F / y;
 }
