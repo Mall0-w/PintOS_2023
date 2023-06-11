@@ -52,6 +52,9 @@ static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
+/* Limit on depth of nested priority donation */
+#define DEPTH_LIMIT 8
+
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
@@ -866,7 +869,7 @@ handle_mlfqs(int64_t ticks) {
     calculate_thread_priority_for_all();
   }
   // Every 4 ticks
-  if (ticks % PRIORITY_CALCULATE_TICK == 0) {
+  if (ticks % TIME_SLICE == 0) {
     calculate_thread_priority(thread_current(), NULL);
     if (check_current_thread_priority_against_ready()) {
       intr_yield_on_return();
