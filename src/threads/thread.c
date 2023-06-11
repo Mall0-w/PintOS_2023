@@ -868,6 +868,8 @@ handle_mlfqs(int64_t ticks) {
   // Every 4 ticks
   if (ticks % PRIORITY_CALCULATE_TICK == 0) {
     calculate_thread_priority(thread_current(), NULL);
-    //sort_ready_list_priority();
+    if (check_current_thread_priority_against_ready()) {
+      intr_yield_on_return();
+    }
   }
 }
