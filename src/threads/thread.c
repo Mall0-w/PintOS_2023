@@ -64,8 +64,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-static int64_t load_avg;
-static struct list sleeping_thread_list;
+static int64_t load_avg;                    /* System load average */
+static struct list sleeping_thread_list;    /* List of sleeping threads */
   
 static void kernel_thread (thread_func *, void *aux);
 
@@ -83,7 +83,7 @@ void sort_ready_list_priority(void);
 bool check_current_thread_priority_against_ready(void);
 
 /* Alarm clock functions*/
-bool compare_thread_awake_time(struct list_elem *a, struct list_elem *b, void* aux);
+bool compare_thread_awake_time(const struct list_elem *a, const struct list_elem *b, void* aux);
 
 /* Priority donation functions */
 void calculate_thread_effective_priority (void);
@@ -658,7 +658,7 @@ allocate_tid (void)
 
 /* Checks if thread A's sleep tick is less than thread B's sleep tick*/
 bool 
-compare_thread_awake_time(struct list_elem *a, struct list_elem *b, void* aux) {
+compare_thread_awake_time(const struct list_elem *a, const struct list_elem *b, void* aux) {
   /* Convert list elements into respective thread */
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
