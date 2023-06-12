@@ -64,8 +64,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-static int64_t load_avg;
-static struct list sleeping_thread_list;
+static int64_t load_avg;                    /* System load average */
+static struct list sleeping_thread_list;    /* List of sleeping threads */
   
 static void kernel_thread (thread_func *, void *aux);
 

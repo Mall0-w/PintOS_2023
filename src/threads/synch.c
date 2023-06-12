@@ -114,13 +114,13 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) {
-    list_sort(&sema->waiters, compare_thread_priority, NULL);
+    list_sort (&sema->waiters, compare_thread_priority, NULL);
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   }
   sema->value++;
   /* Yield in case higher priority thread has been unblocked */
-  thread_yield();
+  thread_yield ();
   intr_set_level (old_level);
 }
 
@@ -202,16 +202,16 @@ lock_acquire (struct lock *lock)
 
 
   /* Check if semaphore is decremented */
-  if(!sema_try_down(&lock->semaphore)) {
+  if(!sema_try_down (&lock->semaphore)) {
     /* Handle priority donations when lock blocks other threads */
     if (!thread_mlfqs)
-      handle_lock_block(lock);
+      handle_lock_block (lock);
     sema_down (&lock->semaphore);
   }
-  lock->holder = thread_current();
+  lock->holder = thread_current ();
   if (!thread_mlfqs)
     /* Handle lock fields after being acquired */
-    handle_lock_acquire(lock);
+    handle_lock_acquire (lock);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -247,7 +247,7 @@ lock_release (struct lock *lock)
 
   /* Handle priority donations when lock is released */
   if (!thread_mlfqs)
-    handle_lock_release(lock);
+    handle_lock_release (lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
