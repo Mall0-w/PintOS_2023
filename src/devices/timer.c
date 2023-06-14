@@ -30,8 +30,6 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-static struct list blocked_thread_list;
-
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -40,8 +38,6 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
-
-  list_init(&blocked_thread_list);
 }
 
 
@@ -98,17 +94,7 @@ void
   int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
 
-  struct thread *cur = thread_current();
-  cur->awake_time = start + ticks;
-  
-  /* Disables interrupts to avoid concurrency issues */
-  enum intr_level old_status = intr_disable();
-  /* Insert current thread into a list of blocked threads sorted by awake_time value */
-  list_insert_ordered(&blocked_thread_list, &cur->elem, (list_less_func *) &awake_time_compare, NULL);
-  /* Block the current thread */
-  thread_block();
-  /* Enable interrupts back */
-  intr_set_level(old_status);
+  thread_sleep (ticks, start);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -186,10 +172,10 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  awaken_threads();
   thread_tick ();
+  awaken_threads (ticks);
+  handle_mlfqs (ticks);
 }
-
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
@@ -260,36 +246,4 @@ real_time_delay (int64_t num, int32_t denom)
      the possibility of overflow. */
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
-}
-
-/* Checks if thread A's sleep tick is less than thread B's sleep tick*/
-bool 
-awake_time_compare(struct list_elem *a, struct list_elem *b, void* aux) {
-  /* Convert list elements into respective thread */
-  struct thread *thread_a = list_entry(a, struct thread, elem);
-  struct thread *thread_b = list_entry(b, struct thread, elem);
-
-  (void)aux;
-
-  /* Return a boolean comparator of the two threads' awake_time values */
-  return thread_a->awake_time < thread_b->awake_time;
-}
-
-/* Wakes all sleeping threads that need to wake up */
-void 
-awaken_threads() {
-  // Check through blocked lists if any thread is ready to wake up
-  while(!list_empty(&blocked_thread_list)) {
-    // Gets the element from the head of the list and converts it to a thread
-    struct thread *thread = list_entry(list_front(&blocked_thread_list), struct thread, elem);
-    // If the thread's awake_time is less than the current ticks, wake up thread due to alarm
-    if(thread->awake_time <= timer_ticks()) {
-      list_pop_front(&blocked_thread_list);
-      thread_unblock(thread);
-    } else {
-      // If the head's thread is not ready to wake up, every element after must also be not ready
-      // to wake up due to being sorted by awake_time
-      break;
-    }
-  }
 }

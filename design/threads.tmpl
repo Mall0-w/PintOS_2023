@@ -34,6 +34,11 @@ Added to struct thread:
 
     int64_t awake_time;  /* Time that thread will wake up. */
 
+Added to global variables:
+
+    static struct list sleeping_thread_list;    /* List of sleeping threads */
+    #define DEPTH_LIMIT 8                       /* Limit on depth of nested priority donation */
+    
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
@@ -60,7 +65,8 @@ The list of asleep threads is always sorted (on insert) so only the beginning of
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
 
-Interrupts are disabled during the critical section of timer_sleep().
+Interrupts are disabled during the critical section of timer_sleep().  Since interrupts are disabled, no race conditions can occur since no
+critical sections can be interrupted.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
@@ -110,7 +116,7 @@ T2 (priority 15, e-priority 15)                 A
 T3 (priority 11, e-priority 11)                 B
 T4 (priority 13, e-priority 13)                 C
 
-Note that instead of an actual data structure, we used recursion to pass the priorities up/down.
+Note that instead of an actual data structure, we used recursion to pass the priorities up/down.  In essence, a thread has a list of locks that it owns and a thread also has a pointer to the lock blocking it. Through the relationship of the list of locks that a thread holds, the lock knowing which thread holds it, and a thread knowing which lock is blocking it, we can traverse up to a thread that isn't blocked by a lock.  We do this traversal when we know a lock is about to block our thread, donating priority as we traverse.
 
 ---- ALGORITHMS ----
 
@@ -135,7 +141,7 @@ A function is called that will remove the lock from the current thread's owned_l
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
-Interrupts are disabled within thread_set_priority().
+Interrupts are disabled during the critical section of thread_set_priority(). A lock could accomplish the same thing but locks will end up disabling interrupts on their own anyways.
 
 ---- RATIONALE ----
 
@@ -155,6 +161,13 @@ We considered using an actual data structure to store the priorities of all the 
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Added to struct thread
+    int nice;                           /* Nice value for mlfqs */ 
+    int64_t recent_cpu;                 /* How much CPU time thread has received recently */
+
+Added to global variables
+    static int64_t load_avg;            /* System load average */
+
 ---- ALGORITHMS ----
 
 >> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
@@ -165,23 +178,30 @@ We considered using an actual data structure to store the priorities of all the 
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0      0   0   0   63  61  59  A
+ 4      4   0   0   62  61  59  A
+ 8      8   0   0   61  61  59  B
+12      8   4   0   61  60  59  A
+16      12  4   0   60  60  59  B
+20      12  8   0   60  59  59  A
+24      16  8   0   59  59  59  C
+28      16  8   4   59  59  58  B
+32      16  12  4   59  58  58  A
+36      20  12  4   58  58  58  C
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
 
+If there is a tie in priority, the order the scheduler will choose the threads was ambiguous.
+We decided to run the threads in round robin order. This matches the behaviour of our scheduler. 
+
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
+
+The calculations for recent_cpu, load_avg and priorities are all done inside the interrupt.
+This decreased performance overall because some of these calculations happen every 4 interrupts.
+However we optimized some of the calculations by delaying doing them until it's needed (lazy evaluation). 
 
 ---- RATIONALE ----
 
@@ -190,12 +210,19 @@ ticks   A   B   C   A   B   C   to run
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
 
+Advantages include a lot of optimization for speed and minimal changes to source functions.
+disadvantages include the heavy use of linked lists to store data which are inefficient for insert and sorting.
+If we had the time, we would work to reimplement the scheduler using self-sorting heaps/queues.
+
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
 >> decide to implement it the way you did?  If you created an
 >> abstraction layer for fixed-point math, that is, an abstract data
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
+
+We chose to create a set of macros to do fixed-point math. We chose to do so to keep the code easy to read and work with.
+We chose to implement it the way we did because of the fixed-point real arithmetic examples in the documentation.
 
                SURVEY QUESTIONS
                ================
