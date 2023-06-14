@@ -65,7 +65,8 @@ The list of asleep threads is always sorted (on insert) so only the beginning of
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
 
-Interrupts are disabled during the critical section of timer_sleep().
+Interrupts are disabled during the critical section of timer_sleep().  Since interrupts are disabled, no race conditions can occur since no
+critical sections can be interrupted.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
@@ -115,7 +116,7 @@ T2 (priority 15, e-priority 15)                 A
 T3 (priority 11, e-priority 11)                 B
 T4 (priority 13, e-priority 13)                 C
 
-Note that instead of an actual data structure, we used recursion to pass the priorities up/down.
+Note that instead of an actual data structure, we used recursion to pass the priorities up/down.  In essence, a thread has a list of locks that it owns and a thread also has a pointer to the lock blocking it. Through the relationship of the list of locks that a thread holds, the lock knowing which thread holds it, and a thread knowing which lock is blocking it, we can traverse up to a thread that isn't blocked by a lock.  We do this traversal when we know a lock is about to block our thread, donating priority as we traverse.
 
 ---- ALGORITHMS ----
 
