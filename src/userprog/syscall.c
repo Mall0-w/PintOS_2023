@@ -49,8 +49,6 @@ get_interrupt_code(const uint8_t *user_address, int* code){
   //also need to make sure to cast to a 8bit unsigned int
   // do this by bit shifting byte_4 24, byte_3, 16, byte_2 8, leaving byte_1
   *code = (uint8_t)byte_4 << 24 | (uint8_t)byte_3 << 16 | (uint8_t)byte_2 << 8 | (uint8_t)byte_1;
-
-  printf("system call %d", *code);
   //everything went off well, so return true for a success
   return true;
 }
@@ -71,7 +69,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   //if code is valid, check to map it to the appropriate handler
   //using sizeof so don't have to keep manually changing a variable for number of syscalls,
   //instead divide the size of the entire array by size of indiv element (first element)
-  if(interrupt_code < sizeof syscalls / sizeof (* syscalls)
+  if(interrupt_code >= 0 && interrupt_code < sizeof syscalls / sizeof (* syscalls)
     && syscalls[interrupt_code] != NULL){
       //if valid, execute the appropriate handler and put its returned code into the
       //frame's eax (the part of the frame that handles the return value), passing the rest
@@ -84,11 +82,11 @@ syscall_handler (struct intr_frame *f UNUSED)
 
 }
 
-int sys_exit(uint8_t* base_addr){
+static int sys_exit(uint8_t* base_addr){
   return -1;
 }
 
-int sys_write(uint8_t* base_addr){
+static int sys_write(uint8_t* base_addr){
   return -1;
 }
 
@@ -96,7 +94,8 @@ int sys_write(uint8_t* base_addr){
    UADDR must be below PHYS_BASE.
    Returns the byte value if successful, -1 if a segfault
    occurred. */
-int get_user (const uint8_t *uaddr)
+static int
+get_user (const uint8_t *uaddr)
 {
   int result;
   asm ("movl $1f, %0; movzbl %1, %0; 1:"
@@ -107,7 +106,8 @@ int get_user (const uint8_t *uaddr)
 /* Writes BYTE to user address UDST.
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
-bool put_user (uint8_t *udst, uint8_t byte)
+static bool
+put_user (uint8_t *udst, uint8_t byte)
 {
   int error_code;
   asm ("movl $1f, %0; movb %b2, %1; 1:"
