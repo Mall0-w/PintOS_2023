@@ -57,24 +57,45 @@ put_user (uint8_t *udst, uint8_t byte)
   return error_code != -1;
 }
 
-static void
+/*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
+static bool
 copy_in (void* dst_, const void* usrc_, size_t size){
+  int curr;
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
-  
+  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
+    printf("invalid vaddr\n");
+    return false;
+  }  
+
   for(; size > 0; size--, dst++, usrc++){
-    *dst = get_user(usrc);
+    int curr = get_user(usrc);
+    if(curr == -1){
+      printf("segfault\n");
+      return false;
+    }
+    *dst = curr;
   }
+  return true;
 }
 
 static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interupt_number;
-  copy_in(&interupt_number, f->esp, sizeof(interupt_number));
+  //copy in interrupt number, exit if error occured
+  if(!copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
+    printf("invalid copy");
+    thread_exit();
+  }
+
   printf ("system call!\n");
+  //if interrupt number is valid, call its function and grab return code
   if(interupt_number < sizeof(syscalls) / sizeof(*syscalls)){
     f->eax = syscalls[interupt_number]((uint8_t*)f->esp + sizeof(interupt_number));
+  }else{
+    //otherwise return code is -1
+    f->eax = -1;
   }
   thread_exit();
 }
