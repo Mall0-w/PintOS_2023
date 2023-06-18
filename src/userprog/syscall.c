@@ -4,6 +4,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include <stddef.h>
+#include "kernel/stdio.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*syscalls[])(const uint8_t* stack) = {
@@ -58,8 +60,7 @@ put_user (uint8_t *udst, uint8_t byte)
 }
 
 /*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
-static bool
-copy_in (void* dst_, const void* usrc_, size_t size){
+bool copy_in (void* dst_, const void* usrc_, size_t size){
   int curr;
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
@@ -138,7 +139,22 @@ int syscall_read(uint8_t* stack){
 
 int syscall_write(uint8_t* stack){
   printf("write called\n");
-  return -1;
+  int fd;
+  void* buffer;
+  unsigned size;
+  printf("copying write args\n");
+  if(!copy_in(&fd, stack, sizeof(int)) ||
+    !copy_in(&buffer, stack, sizeof(void*)) ||
+    !copy_in(&size, stack, sizeof(unsigned))){
+      return -1;
+  }
+  printf("args copied\n");
+  if(fd == STDOUT_FILENO){
+    putbuf(buffer, size);
+    return size;
+  }else{
+    return 0;
+  }
 }
 
 int syscall_seek(uint8_t* stack){
