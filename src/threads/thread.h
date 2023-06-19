@@ -87,14 +87,25 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
+
+    /* Alarm Clock */
+    int64_t awake_time;                /* Time that thread will wake up. */
+
+    /* Priority Donation */
     int priority;                       /* Priority. */
     int effective_priority;             /* Priority accounting for donations */
     struct lock *blocking_lock;         /* Lock that is blocking thread */
     struct list owned_locks;            /* List of locks the thread owns */
+
+    /* Advanced Scheduler */
     int nice;                           /* Nice value for mlfqs */ 
     int64_t recent_cpu;                 /* How much CPU time thread has received recently */
     struct list_elem allelem;           /* List element for all threads list. */
-    int64_t awake_time;                /* Time that thread will wake up. */
+
+    /* Userprog */
+    struct thread *parent;
+    struct list child_list;
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
