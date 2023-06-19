@@ -138,23 +138,24 @@ int syscall_read(uint8_t* stack){
 }
 
 int syscall_write(uint8_t* stack){
-  printf("write called\n");
-  int fd;
-  void* buffer;
-  unsigned size;
-  printf("copying write args\n");
-  if(!copy_in(&fd, stack, sizeof(int)) ||
-    !copy_in(&buffer, stack + sizeof(int), sizeof(void*)) ||
-    !copy_in(&size, stack + sizeof(int) + sizeof(void*), sizeof(unsigned))){
-      return -1;
-  }
-  printf("args copied\n");
-  if(fd == STDOUT_FILENO){
-    putbuf(buffer, size);
-    return size;
-  }else{
-    return 0;
-  }
+  return -1;
+  // printf("write called\n");
+  // int fd;
+  // void* buffer;
+  // unsigned size;
+  // printf("copying write args\n");
+  // if(!copy_in(&fd, stack, sizeof(int)) ||
+  //   !copy_in(&buffer, stack + sizeof(int), sizeof(void*)) ||
+  //   !copy_in(&size, stack + sizeof(int) + sizeof(void*), sizeof(unsigned))){
+  //     return -1;
+  // }
+  // printf("args copied\n");
+  // if(fd == STDOUT_FILENO){
+  //   putbuf(buffer, size);
+  //   return size;
+  // }else{
+  //   return 0;
+  // }
 }
 
 int syscall_seek(uint8_t* stack){

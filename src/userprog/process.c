@@ -17,6 +17,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
+
+#define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -196,7 +199,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (int argc, char* argv[], void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -302,8 +305,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
+  /*pointers to keep track of position in strtok_r*/
+  char* curr_arg;
+  char* remanining_args;
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  /* go through all cli arguments, parsing using strotk_r*/
+  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
+    argv[argc] = curr_arg;
+    argc++;
+  }
+
+
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (argc, argv, esp))
     goto done;
 
   /* Start address. */
@@ -428,7 +444,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (int argc, char* argv[], void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -437,8 +453,43 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE - 12;
+      if (success){
+        //*esp = PHYS_BASE - 12;
+        char* arg_pointers[argc];
+        int offset = 0;
+        //pushing args onto stack in reverse order
+        for(int i = argc - 1; i >= 0; i--){
+          //offset stack pointer with enough room for arg, offset length by 1 for null term
+          //using 128 as limit for strlen because of limit said in docs
+          offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
+          *esp = *esp - offset;
+          //copy arg into stack
+          copy_in(*esp, argv[i], offset);
+          //copy that pointer into the args
+          arg_pointers[i] = *esp;
+        }
+        //round the current stack position down by 4 to align with words
+        word_round_down(esp);
+        //offset word for null pointer sentinel
+        *esp = *esp - 4;
+        *((int *) esp) = NULL;
+        //push pointers onto stack, again in reverse order
+        *esp = *esp - 4;
+        for(int i = argc - 1; i >= 0; i--){
+          *((char**) esp) = arg_pointers[i];
+          *esp = *esp - 4;
+        }
+
+        //now push pointer to first arg, argc, and null pointer for return address
+        //first arg
+        *((char**) *esp) = *esp + 4;
+        *esp = *esp - 4;
+        //argc
+        *((int*) *esp) = argc;
+        *esp = *esp - 4;
+        //return address
+        *((int*) *esp) = 0;
+      }
       else
         palloc_free_page (kpage);
     }
