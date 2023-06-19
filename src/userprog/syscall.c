@@ -144,8 +144,8 @@ int syscall_write(uint8_t* stack){
   unsigned size;
   printf("copying write args\n");
   if(!copy_in(&fd, stack, sizeof(int)) ||
-    !copy_in(&buffer, stack, sizeof(void*)) ||
-    !copy_in(&size, stack, sizeof(unsigned))){
+    !copy_in(&buffer, stack + sizeof(int), sizeof(void*)) ||
+    !copy_in(&size, stack + sizeof(int) + sizeof(void*), sizeof(unsigned))){
       return -1;
   }
   printf("args copied\n");
