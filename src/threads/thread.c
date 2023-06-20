@@ -80,7 +80,6 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 void sort_ready_list_priority(void);
-bool check_current_thread_priority_against_ready(void);
 
 /* Alarm clock functions*/
 bool compare_thread_awake_time (const struct list_elem *a, 
@@ -709,6 +708,7 @@ sort_ready_list_priority(void) {
    priority thread in ready list */
 bool
 check_current_thread_priority_against_ready(void) {
+  if (list_empty(&ready_list)) return false;
   return compare_thread_priority(list_begin(&ready_list), 
                                  &thread_current()->elem, NULL);
 }
