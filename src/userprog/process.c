@@ -102,6 +102,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1){}
   return -1;
 }
 
@@ -209,7 +210,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (int argc, char* argv[], void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -315,8 +316,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
+  /*pointers to keep track of position in strtok_r*/
+  char* curr_arg;
+  char* remanining_args;
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  /* go through all cli arguments, parsing using strotk_r*/
+  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
+    argv[argc] = curr_arg;
+    argc++;
+  }
+
+
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (argc, argv, esp))
     goto done;
 
   /* Start address. */
@@ -441,7 +455,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (int argc, char* argv[], void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -450,8 +464,51 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (success){
         *esp = PHYS_BASE;
+        char* arg_pointers[argc];
+        int offset = 0;
+        //pushing args onto stack in reverse order
+        for(int i = argc - 1; i >= 0; i--){
+          //offset stack pointer with enough room for arg, offset length by 1 for null term
+          //using 128 as limit for strlen because of limit said in docs
+          offset = sizeof (char) * (strnlen (argv[i], 128) + 1);
+          *esp = *esp - offset;
+          //copy arg into stack
+          memcpy (*esp, argv[i], offset);
+          //copy that pointer into the args
+          arg_pointers[i] = *esp;
+        }
+
+        //round the current stack position down by 4 to align with words
+        word_round_down (esp);
+
+        //offset word for null pointer sentinel
+        *esp = (char *) *esp - sizeof (char *);
+        char *sentinel = NULL;
+        memcpy (*esp, &sentinel, sizeof (char *));
+
+        //push pointers onto stack, again in reverse order
+        for(int i = argc - 1; i >= 0; i--) {
+          *esp = (char *) *esp - sizeof (char *);
+          memcpy (*esp, &arg_pointers[i], sizeof (char *));
+        }
+
+        //now push pointer to first arg, argc, and null pointer for return address
+        //first arg
+        char **argv_ptr = *esp;
+        *esp = (char *) *esp - sizeof (char **);
+        memcpy (&esp, &argv_ptr, sizeof (char **));
+        
+        //argc
+        *esp = (char *) *esp - sizeof (char *);
+        memcpy (*esp, &argc, sizeof (int));        
+
+        //return address
+        void *ret_addr = NULL;
+        *esp = (char *) *esp - sizeof (char *);
+        memcpy (&esp, &ret_addr, sizeof (void *));
+      }
       else
         palloc_free_page (kpage);
     }
