@@ -6,7 +6,6 @@
 #include "threads/vaddr.h"
 #include <stddef.h>
 #include "kernel/stdio.h"
-#include "threads/synch.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*syscall_handlers[])(const uint8_t* stack) = {
@@ -27,13 +26,10 @@ static int (*syscall_handlers[])(const uint8_t* stack) = {
 
 static void syscall_handler (struct intr_frame *);
 
-struct lock file_lock;
-
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&file_lock);
 }
 
 	
@@ -166,14 +162,11 @@ int syscall_write(uint8_t* stack){
   //printf("fd %d, buffer %s, size %d\n", fd, buffer, size);  
   
   //if to stdout, just put to the buffer
-  lock_acquire(&file_lock);
   if(fd == STDOUT_FILENO){
     putbuf(buffer, size);
-    lock_release(&file_lock);
     return size;
   }
   //TODO: figure out how to handle different file descriptors
-  lock_release(&file_lock);
   return 0;
 }
 
