@@ -93,7 +93,7 @@ syscall_handler (struct intr_frame *f)
   printf ("system call!\n");
   //if interrupt number is valid, call its function and grab return code
   if(interupt_number < sizeof(syscalls) / sizeof(*syscalls)){
-    f->eax = syscalls[interupt_number]((uint8_t*)f->esp + sizeof(interupt_number));
+    f->eax = syscalls[interupt_number](f->esp + sizeof(unsigned));
   }else{
     //otherwise return code is -1
     f->eax = -1;
@@ -138,6 +138,15 @@ int syscall_read(uint8_t* stack){
 }
 
 int syscall_write(uint8_t* stack){
+  uint8_t* curr_address = stack;
+  int fd = *((int*) curr_address);
+  curr_address += sizeof(int);
+  char* buffer = *((char**)curr_address);
+  curr_address += sizeof(char*);
+  int size = *((int*) curr_address);
+
+  printf("fd %d, buffer %s, size %d\n", fd, buffer, size);
+
   return -1;
   // printf("write called\n");
   // int fd;

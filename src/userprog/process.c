@@ -454,7 +454,7 @@ setup_stack (int argc, char* argv[], void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success){
-        //*esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
         char* arg_pointers[argc];
         int offset = 0;
         //pushing args onto stack in reverse order
@@ -464,31 +464,30 @@ setup_stack (int argc, char* argv[], void **esp)
           offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
           *esp = *esp - offset;
           //copy arg into stack
-          copy_in(*esp, argv[i], offset);
+          memcpy(*esp, argv[i], offset);
           //copy that pointer into the args
           arg_pointers[i] = *esp;
         }
         //round the current stack position down by 4 to align with words
-        word_round_down(esp);
+        *esp = round_word_down(*esp);
         //offset word for null pointer sentinel
-        *esp = *esp - 4;
-        *((int *) esp) = NULL;
+        *esp = *esp - sizeof(int*);
+        *((int**) *esp) = NULL;
         //push pointers onto stack, again in reverse order
-        *esp = *esp - 4;
         for(int i = argc - 1; i >= 0; i--){
-          *((char**) esp) = arg_pointers[i];
-          *esp = *esp - 4;
+          *esp = *esp - sizeof(char*);
+          *((char**) *esp) = arg_pointers[i];
         }
-
         //now push pointer to first arg, argc, and null pointer for return address
         //first arg
-        *((char**) *esp) = *esp + 4;
-        *esp = *esp - 4;
+        *esp = *esp - sizeof(char**);
+        *((char***) *esp) = *esp + sizeof(char*);
         //argc
+        *esp = *esp - sizeof(int*);
         *((int*) *esp) = argc;
-        *esp = *esp - 4;
         //return address
-        *((int*) *esp) = 0;
+        *esp = *esp - sizeof(int*);
+        *((int**) *esp) = NULL;
       }
       else
         palloc_free_page (kpage);
