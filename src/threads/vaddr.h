@@ -40,12 +40,9 @@ static inline void *pg_round_down (const void *va) {
   return (void *) ((uintptr_t) va & ~PGMASK);
 }
 
-/* Word offset (bits 0:4). */
-#define WORDSHIFT 0                          /* Index of first offset bit. */
-#define WORDBITS  4                         /* Number of offset bits. */
-#define WORDMASK  BITMASK(WORDSHIFT, WORDBITS)   /* Page offset bits (0:4). */
-static inline void *word_round_down (const void *va){
-  return (void *) ((uintptr_t) va & ~WORDMASK);
+#define WORD_BYTES 4
+static inline void *round_word_down (const void *va){
+  return (void *) ((uintptr_t) va - ((uintptr_t) va % WORD_BYTES));
 }
 
 /* Base address of the 1:1 physical-to-virtual mapping.  Physical

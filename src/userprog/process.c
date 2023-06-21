@@ -50,18 +50,6 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
     return TID_ERROR;
   }
-
-  struct child_process *cur_child;
-  struct child_process *found_child;
-  for (struct list_elem *it = list_begin (&thread_current ()->child_list); it != list_end (&thread_current ()->child_list); it = list_next (it)) {
-    cur_child = list_entry(it, struct child, elem);
-    if (tid == cur_child->tid) {
-      found_child = cur_child;
-    }
-  }
-
-  sema_down(&found_child->wait_sema);
-
   return tid;
 }
 
@@ -462,6 +450,7 @@ setup_stack (int argc, char* argv[], void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success){
         *esp = PHYS_BASE;
+        *esp = PHYS_BASE;
         char* arg_pointers[argc];
         int offset = 0;
         //pushing args onto stack in reverse order
@@ -477,8 +466,7 @@ setup_stack (int argc, char* argv[], void **esp)
         }
 
         //round the current stack position down by 4 to align with words
-        word_round_down (esp);
-
+        *esp = round_word_down(*esp);
         //offset word for null pointer sentinel
         *esp = (char *) *esp - sizeof (char *);
         char *sentinel = NULL;
@@ -489,7 +477,6 @@ setup_stack (int argc, char* argv[], void **esp)
           *esp = (char *) *esp - sizeof (char *);
           memcpy (*esp, &arg_pointers[i], sizeof (char *));
         }
-
         //now push pointer to first arg, argc, and null pointer for return address
         //first arg
         char **argv_ptr = *esp;
