@@ -6,8 +6,6 @@
 
 void syscall_init (void);
 
-bool copy_in (void* dst_, const void* usrc_, size_t size);
-
 int syscall_halt (uint8_t* stack);
 int syscall_exit(uint8_t* stack);
 int syscall_exec(uint8_t* stack);

@@ -32,8 +32,6 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-	
-
 /* Reads a byte at user virtual address UADDR.
    UADDR must be below PHYS_BASE.
    Returns the byte value if successful, -1 if a segfault
@@ -59,27 +57,6 @@ put_user (uint8_t *udst, uint8_t byte)
   return error_code != -1;
 }
 
-/*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
-bool copy_in (void* dst_, const void* usrc_, size_t size){
-  int curr;
-  uint8_t* dst = dst_;
-  const uint8_t* usrc = usrc_;
-  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
-    printf("invalid vaddr\n");
-    return false;
-  }  
-
-  for(; size > 0; size--, dst++, usrc++){
-    int curr = get_user(usrc);
-    if(curr == -1){
-      printf("segfault\n");
-      return false;
-    }
-    *dst = curr;
-  }
-  return true;
-}
-
 static void
 syscall_handler (struct intr_frame *f) 
 { 
@@ -93,12 +70,21 @@ syscall_handler (struct intr_frame *f)
   printf ("system call!\n");
   //if interrupt number is valid, call its function and grab return code
   if(interupt_number < sizeof(syscalls) / sizeof(*syscalls)){
-    f->eax = syscalls[interupt_number]((uint8_t*)f->esp + sizeof(interupt_number));
+    f->eax = syscalls[interupt_number]((uint8_t*)f->esp);
   }else{
     //otherwise return code is -1
     f->eax = -1;
   }
   thread_exit();
+}
+
+void
+get_args (uint8_t *stack, int argc, int *argv) {
+  int *next_arg;
+  for (int i = 0; i < argc; i++) {
+    next_arg = stack + i + i;
+    argv[i] = *next_arg;
+  }
 }
 
 int syscall_halt (uint8_t* stack){
@@ -114,7 +100,10 @@ int syscall_exec(uint8_t* stack){
 }
 
 int syscall_wait(uint8_t* stack){
-  return -1;
+  int argv[1];
+  get_args(stack, 1, argv);
+  pid_t pid = argv[0];
+  return process_wait(pid);
 }
 
 int syscall_create(uint8_t* stack){

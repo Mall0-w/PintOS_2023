@@ -32,7 +32,6 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-  char* func_name;
   char* save_ptr;
 
   /* Make a copy of FILE_NAME.
@@ -42,17 +41,27 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  func_name = malloc(strlen(fn_copy) + 1);
-  strlcpy(func_name, fn_copy, strlen(fn_copy) + 1);
-  func_name = strtok_r (func_name, " ", &save_ptr);
+  file_name = strtok_r (file_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (func_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
 
-  free(func_name);
+  if (tid == TID_ERROR) {
+    palloc_free_page (fn_copy);
+    return TID_ERROR;
+  }
 
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  struct child_process *cur_child;
+  struct child_process *found_child;
+  for (struct list_elem *it = list_begin (&thread_current ()->child_list); it != list_end (&thread_current ()->child_list); it = list_next (it)) {
+    cur_child = list_entry(it, struct child, elem);
+    if (tid == cur_child->tid) {
+      found_child = cur_child;
+    }
+  }
+
+  sema_down(&found_child->wait_sema);
+
   return tid;
 }
 
@@ -315,19 +324,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-
-  /*pointers to keep track of position in strtok_r*/
-  char* curr_arg;
-  char* remanining_args;
-  char *argv[MAX_ARGS];
-  int argc = 0;
-
-  /* go through all cli arguments, parsing using strotk_r*/
-  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
-    argv[argc] = curr_arg;
-    argc++;
-  }
-
 
   /* Set up stack. */
   if (!setup_stack (argc, argv, esp))
