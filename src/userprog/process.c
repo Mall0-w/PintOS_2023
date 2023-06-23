@@ -500,6 +500,8 @@ setup_stack (int argc, char* argv[], void **esp)
   return success;
 }
 
+/*Function used to find a processs_file of given fd under thread
+  returns NULL if no such file exists*/
 struct process_file* find_file(struct thread* t, int fd){
   struct process_file* curr_file;
   for(struct list_elem* curr = list_front(&t->opened_files);

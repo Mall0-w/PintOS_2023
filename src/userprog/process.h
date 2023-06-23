@@ -14,6 +14,6 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
-struct process_file* find_file(struct thread* t, int fd);
+struct process_file* find_file(struct thread* t, int fd);   /*Function used to find a file of given fd under thread t*/
 
 #endif /* userprog/process.h */

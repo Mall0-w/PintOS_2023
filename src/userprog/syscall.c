@@ -28,6 +28,7 @@ static int (*syscall_handlers[])(const uint8_t* stack) = {
   [SYS_CLOSE]syscall_close
 };
 
+/*Lock used to handle filesys concurrency*/
 struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
@@ -35,8 +36,9 @@ static void syscall_handler (struct intr_frame *);
 void
 syscall_init (void) 
 {
-  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  //have to init lock before register, since register calls syscall handler
   lock_init(&file_lock);
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 	
@@ -109,25 +111,29 @@ syscall_handler (struct intr_frame *f)
     //otherwise return code is -1
     f->eax = -1;
   }
-  thread_exit();
+  //thread_exit();
 }
 
+/*handler for SYS_HALT*/
 void syscall_halt (uint8_t* stack){
   return;
 }
-
+/*HANDLER FOR SYS_EXIT*/
 void syscall_exit(uint8_t* stack){
   return;
 }
 
+/*HANLDER FOR SYS_EXEC*/
 int syscall_exec(uint8_t* stack){
   return -1;
 }
 
+/*Handler for SYS_WAIT*/
 int syscall_wait(uint8_t* stack){
   return -1;
 }
 
+/*handler for SYS_CREATE*/
 bool syscall_create(uint8_t* stack){
   const char* file_name;
   unsigned inital_size;
@@ -147,16 +153,20 @@ bool syscall_create(uint8_t* stack){
   return success;
 }
 
+/*Handler for SYS_REMOVE*/
 bool syscall_remove(uint8_t* stack){
+  //get the file name
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
     return false;
+  //acquire lock, remove then release
   lock_acquire(&file_lock);
   bool success = filesys_remove(file_name);
   lock_release(&file_lock);
   return success;
 }
 
+/*Handler for SYS_OPEn*/
 int syscall_open(uint8_t* stack){
   //copy filename froms stack
   char* file_name;
@@ -165,7 +175,6 @@ int syscall_open(uint8_t* stack){
   //open file
   lock_acquire(&file_lock);
   struct file* f = filesys_open(file_name);
-  lock_release(&file_lock);
   if(f == NULL){
     return -1;
   }
@@ -173,20 +182,25 @@ int syscall_open(uint8_t* stack){
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));
   struct thread* t = thread_current();
-  //asign its fd
+  //asign its fd, its file, and increment thread's fd counter
   new_file->fd = t->curr_fd+1;
   new_file->file = f;
   t->curr_fd++; 
   //add the file to process' list of files
   list_push_front(&t->opened_files, &new_file->elem);
-  //assign a fd and return it
+  //release the lock for the file system
+  lock_release(&file_lock);
+  //return assigned fd
   return new_file->fd;
 }
 
+/*Handler for SYS_FILESIZE*/
 int syscall_filesize(uint8_t* stack){
+  //copy in fd
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
     return 0;
+  //acquire lock, file from fd, then get size
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
   if(f == NULL){
@@ -194,10 +208,12 @@ int syscall_filesize(uint8_t* stack){
     return 0;
   }
   int size = (int)file_length(f);
+  //release lock and return size
   lock_release(&file_lock);
   return size;
 }
 
+/*Handler for SYS_READ*/
 int syscall_read(uint8_t* stack){
   int fd;
   void* buffer;
@@ -225,6 +241,7 @@ int syscall_read(uint8_t* stack){
   return size;
 }
 
+/*Handler for SYS_WRITE*/
 int syscall_write(uint8_t* stack){
   uint8_t* curr_address = stack;
   //int fd = *((int*) curr_address);
@@ -242,19 +259,29 @@ int syscall_write(uint8_t* stack){
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
-
-  //printf("fd %d, buffer %s, size %d\n", fd, buffer, size);  
   
   //if to stdout, just put to the buffer
   if(fd == STDOUT_FILENO){
     putbuf(buffer, size);
     return size;
   }
-  //TODO: figure out how to handle different file descriptors
-  return 0;
+  //acquire lock for filesys and find file
+  lock_acquire(&file_lock);
+  struct process_file* f = find_file(thread_current(), fd);
+  if(f == NULL){
+    lock_release(&file_lock);
+    return -1;
+  }
+  //write to file, then release lock
+  size = (int)file_write(f->file, buffer, size);
+  lock_release(&file_lock);
+  return size;
+  
 }
 
+/*Handler for SYS_SEEK*/
 void syscall_seek(uint8_t* stack){
+  //copy in args
   int fd;
   unsigned position;
   uint8_t* curr_pos = stack;
@@ -266,53 +293,67 @@ void syscall_seek(uint8_t* stack){
   if(!copy_in(&position, curr_pos, sizeof(unsigned)))
     return;
   
+  //acquire lock and find file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
   if(f == NULL){
     lock_release(&file_lock);
     return;
   }
+  //call seek then release lock
   file_seek(f->file, position);
   lock_release(&file_lock);
 
   return;
 }
 
+/*Hanlder for SYS_TELL*/
 unsigned syscall_tell(uint8_t* stack){
+  //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
     return 0;
   struct thread* t = thread_current();
-  
+  //acquire lock and file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(t, fd);
   if(f == NULL){
     lock_release(&file_lock);
     return 0;
   }
+  //get tell and release lock
   unsigned tell = (unsigned)file_tell(f->file);
   lock_release(&file_lock);
   return tell;
 }
 
+//Handler for SYS_CLOSE
 void syscall_close(uint8_t* stack){
+  //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
     return;
-  
+  //acquire lock and file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
+  //call handler for closing process file based on process_file
   close_proc_file(f, true);
   return;
 }
 
+/*Function that takes a process_file f and closes it
+if release_lock is true it will release file_lock*/
 void close_proc_file(struct process_file* f, bool release_lock){
   ASSERT(f != NULL);
+  //check if already holding file lock, if not acquire it
   if(file_lock.holder != thread_current())
     lock_acquire(&file_lock);
+  //close the file and remove it from the thread's files
   file_close(f->file);
   list_remove(&f->elem);
+  //free the process_file that was allocated on create
   free(f);
+  //release lock if set to true
   if(release_lock)
     lock_release(&file_lock);
   return;
