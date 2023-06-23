@@ -115,7 +115,8 @@ syscall_handler (struct intr_frame *f)
 }
 
 int syscall_halt (uint8_t* stack){
-  return -1;
+  shutdown_power_off();
+  return -1; // What should be returned here?
 }
 
 int syscall_exit(uint8_t* stack){
