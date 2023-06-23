@@ -140,11 +140,11 @@ int create(const uint8_t* stack){
   unsigned inital_size;
   uint8_t* curr_pos = stack;
   //copy in arguments
-  if(!copy_in(&file_name, stack, sizeof(char*)))
+  if(!copy_in(&file_name, curr_pos, sizeof(char*)))
     return false;
   curr_pos += sizeof(char*);
 
-  if(!copy_in(&inital_size, stack, sizeof(unsigned)))
+  if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
     return false;
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
@@ -224,10 +224,10 @@ int read(const uint8_t* stack){
   if(!copy_in(&fd, curr_pos, sizeof(int)))
     return -1;
   curr_pos += sizeof(int);
-  if(!copy_in(&buffer, stack, sizeof(void*)))
+  if(!copy_in(&buffer, curr_pos, sizeof(void*)))
     return -1;
   curr_pos += sizeof(void*);
-  if(!copy_in(&size, stack, sizeof(unsigned)))
+  if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
   
   //acquire lock, find file and read
