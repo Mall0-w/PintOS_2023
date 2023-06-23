@@ -83,6 +83,15 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   return true;
 }
 
+void
+get_args (uint8_t *stack, int argc, int *argv) {
+  int *next_arg;
+  for (int i = 0; i < argc; i++) {
+    next_arg = stack + i + i;
+    argv[i] = *next_arg;
+  }
+}
+
 static void
 syscall_handler (struct intr_frame *f) 
 { 
@@ -110,7 +119,13 @@ int syscall_halt (uint8_t* stack){
 }
 
 int syscall_exit(uint8_t* stack){
-  return -1;
+  struct thread *curr_thread = thread_current();
+  int argv[1]; // Array of arguments starting from the first argument
+  get_args(stack, 1, argv); // Get the arguments from the stack
+  int status = argv[0]; // Get the status from the arguments
+  printf("%s: exit(%d)\n", curr_thread->name, status);
+  thread_exit ();
+  return status;
 }
 
 int syscall_exec(uint8_t* stack){
