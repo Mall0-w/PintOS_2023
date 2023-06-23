@@ -13,20 +13,20 @@
 #include "threads/malloc.h"
 
 /*Mapping each syscall to their respective function*/
-static int (*syscall_handlers[])(const uint8_t* stack) = {
-  [SYS_HALT]syscall_halt,
-  [SYS_EXIT]syscall_exit,
-  [SYS_EXEC]syscall_exec,
-  [SYS_WAIT]syscall_wait,
-  [SYS_CREATE]syscall_create,
-  [SYS_REMOVE]syscall_remove,
-  [SYS_OPEN]syscall_open, 
-  [SYS_FILESIZE]syscall_filesize,
-  [SYS_READ]syscall_read,
-  [SYS_WRITE]syscall_write,
-  [SYS_SEEK]syscall_seek,
-  [SYS_TELL]syscall_tell,
-  [SYS_CLOSE]syscall_close
+static int (*handlers[])(const uint8_t* stack) = {
+  [SYS_HALT]halt,
+  [SYS_EXIT]exit,
+  [SYS_EXEC]exec,
+  [SYS_WAIT]wait,
+  [SYS_CREATE]create,
+  [SYS_REMOVE]remove,
+  [SYS_OPEN]open, 
+  [SYS_FILESIZE]filesize,
+  [SYS_READ]read,
+  [SYS_WRITE]write,
+  [SYS_SEEK]seek,
+  [SYS_TELL]tell,
+  [SYS_CLOSE]close
 };
 
 /*Lock used to handle filesys concurrency*/
@@ -104,9 +104,9 @@ syscall_handler (struct intr_frame *f)
 
   printf ("system call!\n");
   //if interrupt number is valid, call its function and grab return code
-  if(interupt_number < sizeof(syscall_handlers) / sizeof(syscall_handlers[0])){
+  if(interupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
-    f->eax = syscall_handlers[interupt_number](f->esp + sizeof(unsigned));
+    f->eax = handlers[interupt_number](f->esp + sizeof(unsigned));
   }else{
     //otherwise return code is -1
     f->eax = -1;
@@ -115,26 +115,26 @@ syscall_handler (struct intr_frame *f)
 }
 
 /*handler for SYS_HALT*/
-int syscall_halt (const uint8_t* stack){
+int halt (const uint8_t* stack){
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
-int syscall_exit(const uint8_t* stack){
+int exit(const uint8_t* stack){
   return -1;
 }
 
 /*HANLDER FOR SYS_EXEC*/
-int syscall_exec(const uint8_t* stack){
+int exec(const uint8_t* stack){
   return -1;
 }
 
 /*Handler for SYS_WAIT*/
-int syscall_wait(const uint8_t* stack){
+int wait(const uint8_t* stack){
   return -1;
 }
 
 /*handler for SYS_CREATE*/
-int syscall_create(const uint8_t* stack){
+int create(const uint8_t* stack){
   //get stack args
   const char* file_name;
   unsigned inital_size;
@@ -155,7 +155,7 @@ int syscall_create(const uint8_t* stack){
 }
 
 /*Handler for SYS_REMOVE*/
-int syscall_remove(const uint8_t* stack){
+int remove(const uint8_t* stack){
   //get the file name
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
@@ -168,7 +168,7 @@ int syscall_remove(const uint8_t* stack){
 }
 
 /*Handler for SYS_OPEn*/
-int syscall_open(const uint8_t* stack){
+int open(const uint8_t* stack){
   //copy filename froms stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
@@ -196,7 +196,7 @@ int syscall_open(const uint8_t* stack){
 }
 
 /*Handler for SYS_FILESIZE*/
-int syscall_filesize(const uint8_t* stack){
+int filesize(const uint8_t* stack){
   //copy in fd
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
@@ -215,7 +215,7 @@ int syscall_filesize(const uint8_t* stack){
 }
 
 /*Handler for SYS_READ*/
-int syscall_read(const uint8_t* stack){
+int read(const uint8_t* stack){
   int fd;
   void* buffer;
   int size;
@@ -243,7 +243,7 @@ int syscall_read(const uint8_t* stack){
 }
 
 /*Handler for SYS_WRITE*/
-int syscall_write(const uint8_t* stack){
+int write(const uint8_t* stack){
   uint8_t* curr_address = stack;
   //int fd = *((int*) curr_address);
   int fd;
@@ -281,7 +281,7 @@ int syscall_write(const uint8_t* stack){
 }
 
 /*Handler for SYS_SEEK*/
-int syscall_seek(const uint8_t* stack){
+int seek(const uint8_t* stack){
   //copy in args
   int fd;
   unsigned position;
@@ -309,7 +309,7 @@ int syscall_seek(const uint8_t* stack){
 }
 
 /*Hanlder for SYS_TELL*/
-int syscall_tell(const uint8_t* stack){
+int tell(const uint8_t* stack){
   //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
@@ -329,7 +329,7 @@ int syscall_tell(const uint8_t* stack){
 }
 
 //Handler for SYS_CLOSE
-int syscall_close(const uint8_t* stack){
+int close(const uint8_t* stack){
   //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
