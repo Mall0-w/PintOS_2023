@@ -101,6 +101,11 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  /*call close on all of the process' files*/
+  for(struct list_elem* e = list_front(cur); e != NULL; e = e->next){
+    struct process_file* f = list_entry(e, struct process_file, elem);
+    close_proc_file(f, true);
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -493,6 +498,17 @@ setup_stack (int argc, char* argv[], void **esp)
         palloc_free_page (kpage);
     }
   return success;
+}
+
+struct process_file* find_file(struct thread* t, int fd){
+  struct process_file* curr_file;
+  for(struct list_elem* curr = list_front(&t->opened_files);
+    curr != NULL; curr=curr->next){
+    curr_file = list_entry(curr, struct process_file, elem);
+    if(curr_file->fd == fd)
+      return curr_file;
+  }
+  return NULL;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

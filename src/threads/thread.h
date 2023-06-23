@@ -98,6 +98,9 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int curr_fd;                     /* current file descriptor*/
+    struct list opened_files;             /* list of files opened by the thread*/
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
