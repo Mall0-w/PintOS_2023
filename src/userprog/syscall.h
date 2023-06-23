@@ -3,24 +3,25 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "userprog/process.h"
 
 void syscall_init (void);
 
 bool copy_in (void* dst_, const void* usrc_, size_t size);
 
-void syscall_halt (uint8_t* stack);             /*Handler for SYS_HALT*/
-void syscall_exit(uint8_t* stack);             /*Handler for SYS_EXIT*/
-int syscall_exec(uint8_t* stack);             /*Handler for SYS_EXEC*/
-int syscall_wait(uint8_t* stack);             /*Handler for SYS_WAIT*/
-bool syscall_create(uint8_t* stack);             /*Handler for SYS_CREATE*/
-bool syscall_remove(uint8_t* stack);             /*Handler for SYS_REMOVE*/
-int syscall_open(uint8_t* stack);              /*Handler for SYS_OPEN*/
-int syscall_filesize(uint8_t* stack);             /*Handler for SYS_FILESIZE*/
-int syscall_read(uint8_t* stack);             /*Handler for SYS_READ*/
-int syscall_write(uint8_t* stack);             /*Handler for SYS_WRITE*/
-void syscall_seek(uint8_t* stack);             /*Handler for SYS_SEEK*/
-unsigned syscall_tell(uint8_t* stack);             /*Handler for SYS_TELL*/
-void syscall_close(uint8_t* stack);             /*Handler for SYS_CLOSE*/
+int syscall_halt (const uint8_t* stack);             /*Handler for SYS_HALT*/
+int syscall_exit(const uint8_t* stack);             /*Handler for SYS_EXIT*/
+int syscall_exec(const uint8_t* stack);             /*Handler for SYS_EXEC*/
+int syscall_wait(const uint8_t* stack);             /*Handler for SYS_WAIT*/
+int syscall_create(const uint8_t* stack);             /*Handler for SYS_CREATE*/
+int syscall_remove(const uint8_t* stack);             /*Handler for SYS_REMOVE*/
+int syscall_open(const uint8_t* stack);              /*Handler for SYS_OPEN*/
+int syscall_filesize(const uint8_t* stack);             /*Handler for SYS_FILESIZE*/
+int syscall_read(const uint8_t* stack);             /*Handler for SYS_READ*/
+int syscall_write(const uint8_t* stack);             /*Handler for SYS_WRITE*/
+int syscall_seek(const uint8_t* stack);             /*Handler for SYS_SEEK*/
+int syscall_tell(const uint8_t* stack);             /*Handler for SYS_TELL*/
+int syscall_close(const uint8_t* stack);             /*Handler for SYS_CLOSE*/
 
 /*Function that closes a file for a process, release filesys lock if release_lock is true*/
 void close_proc_file(struct process_file* f, bool release_lock);
