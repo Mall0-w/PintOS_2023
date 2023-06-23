@@ -111,7 +111,7 @@ syscall_handler (struct intr_frame *f)
     //otherwise return code is -1
     f->eax = -1;
   }
-  //thread_exit();
+  thread_exit();
 }
 
 /*handler for SYS_HALT*/
