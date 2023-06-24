@@ -324,6 +324,8 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
+  //since exited process, allow parent to continue
+  sema_up(&thread_current()->wait_child_sema);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -546,6 +548,9 @@ init_thread (struct thread *t, const char *name, int priority)
   } 
 
   #ifdef USERPROG
+  sema_init(&t->wait_child_sema, 0);
+  list_init(&t->child_processes);
+  t->exit_code = -1;
   t->curr_fd = 3;
   list_init(&t->opened_files);
   #endif
@@ -935,4 +940,38 @@ handle_mlfqs(int64_t ticks) {
       intr_yield_on_return();
     }
   }
+}
+
+/*Function used to get child thread with tid id from t's list of child threads
+if no such thread exists, return NULL*/
+struct thread* find_child_from_id (struct thread* t, tid_t id){
+  //check if list is empty
+  if(list_empty(&t->child_processes))
+    return NULL;
+  //iterate throuh list looking for thread
+  struct thread* curr_thread;
+  struct list_elem* e;
+  for (e = list_begin (&t->child_processes); 
+  e != list_end (&t->child_processes); e = list_next (e)){
+      //if find thread return
+      curr_thread = list_entry(e, struct thread, child_elem);
+      if(curr_thread->tid == id)
+        return curr_thread;
+    }
+  return NULL;
+}
+
+/*Function used to get thread with tid id from the list of all threads
+if no such thread exists, return NULL*/
+struct thread* find_thread_from_id (tid_t id){
+  struct thread* curr_thread;
+  struct list_elem* e;
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e)){
+      //if find thread return
+      curr_thread = list_entry (e, struct thread, allelem);
+      if(curr_thread->tid == id)
+        return curr_thread;
+    }
+  return NULL;
 }

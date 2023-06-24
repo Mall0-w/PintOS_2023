@@ -15,7 +15,7 @@
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(const uint8_t* stack) = {
   [SYS_HALT]halt,
-  [SYS_EXIT]exit,
+  [SYS_EXIT]syscall_exit,
   [SYS_EXEC]exec,
   [SYS_WAIT]wait,
   [SYS_CREATE]create,
@@ -99,7 +99,7 @@ syscall_handler (struct intr_frame *f)
   //copy in interrupt number, exit if error occured
   if(!copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
     printf("invalid copy");
-    thread_exit();
+    proc_exit(-1);
   }
 
   printf ("system call!\n");
@@ -110,8 +110,9 @@ syscall_handler (struct intr_frame *f)
   }else{
     //otherwise return code is -1
     f->eax = -1;
+    proc_exit(-1);
   }
-  thread_exit();
+  // thread_exit();
 }
 
 /*handler for SYS_HALT*/
@@ -119,8 +120,18 @@ int halt (const uint8_t* stack){
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
-int exit(const uint8_t* stack){
-  return -1;
+int syscall_exit(const uint8_t* stack){
+  int status;
+  if(!copy_in(&status, stack, sizeof(int)))
+    status = -1;
+  proc_exit(status);
+  return status;
+}
+
+void proc_exit(int status){
+  struct thread* curr = thread_current();
+  curr->exit_code = status;
+  thread_exit();
 }
 
 /*HANLDER FOR SYS_EXEC*/

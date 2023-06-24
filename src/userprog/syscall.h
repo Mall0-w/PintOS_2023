@@ -10,7 +10,7 @@ void syscall_init (void);
 bool copy_in (void* dst_, const void* usrc_, size_t size);
 
 int halt (const uint8_t* stack);             /*Handler for SYS_HALT*/
-int exit(const uint8_t* stack);             /*Handler for SYS_EXIT*/
+int syscall_exit(const uint8_t* stack);             /*Handler for SYS_EXIT*/
 int exec(const uint8_t* stack);             /*Handler for SYS_EXEC*/
 int wait(const uint8_t* stack);             /*Handler for SYS_WAIT*/
 int create(const uint8_t* stack);             /*Handler for SYS_CREATE*/
@@ -25,5 +25,7 @@ int close(const uint8_t* stack);             /*Handler for SYS_CLOSE*/
 
 /*Function that closes a file for a process, release filesys lock if release_lock is true*/
 void close_proc_file(struct process_file* f, bool release_lock);
+
+void proc_exit(int status);  /*Function used to exit process with statuscode status*/
 
 #endif /* userprog/syscall.h */
