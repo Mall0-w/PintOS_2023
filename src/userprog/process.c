@@ -126,6 +126,7 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  printf("%s: exit(%d)\n", cur->name, cur->exit_code);
   /*call close on all of the process' files*/
   if(!list_empty(&cur->opened_files)){
     for(struct list_elem* e = list_begin(&cur->opened_files);
