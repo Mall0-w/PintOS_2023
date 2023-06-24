@@ -6,6 +6,8 @@
 #include "threads/vaddr.h"
 #include <stddef.h>
 #include "kernel/stdio.h"
+#include "userprog/process.h"
+#include "threads/synch.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*syscall_handlers[])(const uint8_t* stack) = {
@@ -26,10 +28,13 @@ static int (*syscall_handlers[])(const uint8_t* stack) = {
 
 static void syscall_handler (struct intr_frame *);
 
+static struct lock file_lock; // lock for file system
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&file_lock);
 }
 
 	
@@ -103,6 +108,7 @@ syscall_handler (struct intr_frame *f)
   }
 
   printf ("system call!\n");
+  printf("interrupt number: %d\n", interupt_number);
   //if interrupt number is valid, call its function and grab return code
   if(interupt_number < sizeof(syscall_handlers) / sizeof(syscall_handlers[0])){
     //setting return code to code given by respective handler
@@ -130,6 +136,15 @@ int syscall_exit(uint8_t* stack){
 }
 
 int syscall_exec(uint8_t* stack){
+  
+  tid_t tid;
+  int argv[1];
+  get_args(stack, 1, argv);
+  char* cmd_line = argv[0];
+  tid = process_execute(cmd_line);
+
+
+  
   return -1;
 }
 
@@ -175,12 +190,17 @@ int syscall_write(uint8_t* stack){
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
 
-  //printf("fd %d, buffer %s, size %d\n", fd, buffer, size);  
+  printf("fd %d, buffer %s, size %d\n", fd, buffer, size);  
   
+  lock_acquire(&file_lock);
   //if to stdout, just put to the buffer
   if(fd == STDOUT_FILENO){
     putbuf(buffer, size);
+    lock_release(&file_lock);
     return size;
+  }
+  else {
+    lock_release(&file_lock);
   }
   //TODO: figure out how to handle different file descriptors
   return 0;
