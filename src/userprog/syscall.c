@@ -98,11 +98,8 @@ syscall_handler (struct intr_frame *f)
   unsigned interupt_number;
   //copy in interrupt number, exit if error occured
   if(!copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
-    printf("invalid copy");
     proc_exit(-1);
   }
-
-  printf ("system call!\n");
   //if interrupt number is valid, call its function and grab return code
   if(interupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
