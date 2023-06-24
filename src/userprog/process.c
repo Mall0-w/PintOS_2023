@@ -17,6 +17,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
+
+#define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -41,7 +44,17 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+  else{
+    //disabling interrupts since dealing with global list of threads
+    enum intr_level old_level = intr_disable();
+    struct thread* curr = thread_current();
+    //finding thread from id then adding it to child processes
+    struct thread* new = find_thread_from_id(tid);
+    ASSERT(new != NULL);
+    list_push_front(&curr->child_processes, &new->child_elem);
+    intr_set_level(old_level);
+  } 
   return tid;
 }
 
@@ -86,9 +99,25 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  // while(1){}
+  // return -1;
+  //check that current thread has children
+  struct thread* curr = thread_current();
+  if(list_empty(&curr->child_processes))
+    return -1;
+  //get child process
+  struct thread* child = find_child_from_id(curr, child_tid);
+  //check that child exists and doesn't have child
+  if(child == NULL || !list_empty(&child->child_processes))
+    return -1;
+  
+  //if both checks were good, we now just wait for the child to exit
+  //so pop it off our list of children and wait for its semaphore
+  list_remove(&child->child_elem);
+  sema_down(&child->wait_child_sema);
+  return child->exit_code;
 }
 
 /* Free the current process's resources. */
@@ -97,6 +126,14 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  /*call close on all of the process' files*/
+  if(!list_empty(&cur->opened_files)){
+    for(struct list_elem* e = list_begin(&cur->opened_files);
+    e != list_end(&cur->opened_files); e = list_next(e)){
+      struct process_file* f = list_entry(e, struct process_file, elem);
+      close_proc_file(f, true);
+    }
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -195,7 +232,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (int argc, char* argv[], void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -301,8 +338,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
+  /*pointers to keep track of position in strtok_r*/
+  char* curr_arg;
+  char* remanining_args;
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  /* go through all cli arguments, parsing using strotk_r*/
+  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
+    argv[argc] = curr_arg;
+    argc++;
+  }
+
+
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (argc, argv, esp))
     goto done;
 
   /* Start address. */
@@ -427,7 +477,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (int argc, char* argv[], void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -436,12 +486,59 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (success){
         *esp = PHYS_BASE;
+        char* arg_pointers[argc];
+        int offset = 0;
+        //pushing args onto stack in reverse order
+        for(int i = argc - 1; i >= 0; i--){
+          //offset stack pointer with enough room for arg, offset length by 1 for null term
+          //using 128 as limit for strlen because of limit said in docs
+          offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
+          *esp = *esp - offset;
+          //copy arg into stack
+          memcpy(*esp, argv[i], offset);
+          //copy that pointer into the args
+          arg_pointers[i] = *esp;
+        }
+        //round the current stack position down by 4 to align with words
+        *esp = round_word_down(*esp);
+        //offset word for null pointer sentinel
+        *esp = *esp - sizeof(int*);
+        *((int**) *esp) = NULL;
+        //push pointers onto stack, again in reverse order
+        for(int i = argc - 1; i >= 0; i--){
+          *esp = *esp - sizeof(char*);
+          *((char**) *esp) = arg_pointers[i];
+        }
+        //now push pointer to first arg, argc, and null pointer for return address
+        //first arg
+        *esp = *esp - sizeof(char**);
+        *((char***) *esp) = *esp + sizeof(char*);
+        //argc
+        *esp = *esp - sizeof(int*);
+        *((int*) *esp) = argc;
+        //return address
+        *esp = *esp - sizeof(int*);
+        *((int**) *esp) = NULL;
+      }
       else
         palloc_free_page (kpage);
     }
   return success;
+}
+
+/*Function used to find a processs_file of given fd under thread
+  returns NULL if no such file exists*/
+struct process_file* find_file(struct thread* t, int fd){
+  struct process_file* curr_file;
+  for(struct list_elem* curr = list_front(&t->opened_files);
+    curr != NULL; curr=curr->next){
+    curr_file = list_entry(curr, struct process_file, elem);
+    if(curr_file->fd == fd)
+      return curr_file;
+  }
+  return NULL;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
