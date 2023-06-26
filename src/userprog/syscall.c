@@ -107,7 +107,7 @@ int syscall_exit(const uint8_t* stack){
   int status;
   if(!memcpy(&status, stack, sizeof(int)))
     status = -1;
-  proc_exit(status);
+  thread_exit();
   return status;
 }
 
@@ -130,7 +130,11 @@ int exec(const uint8_t* stack){
 
 /*Handler for SYS_WAIT*/
 int wait(const uint8_t* stack){
-  return -1;
+  int argv[1];
+  get_args((uint8_t*)stack, 1, argv);
+  int pid = argv[0];
+  int status = process_wait(pid);
+  return status;
 }
 
 /*handler for SYS_CREATE*/

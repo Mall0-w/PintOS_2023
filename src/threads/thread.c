@@ -332,6 +332,17 @@ thread_exit (void)
   intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
+
+  struct lock *cur_lock;
+  if (!list_empty(&thread_current()->owned_locks)) {
+    for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); 
+          lock_it != list_end(&thread_current()->owned_locks); 
+          lock_it = list_next(lock_it)) {
+      cur_lock = list_entry(lock_it, struct lock, elem);
+      lock_release(cur_lock);   
+    }
+  }
+
   schedule ();
   NOT_REACHED ();
 }
