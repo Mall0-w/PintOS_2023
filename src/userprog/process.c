@@ -31,6 +31,8 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *user_program_name;
+  char *remaining_args;
   tid_t tid;
   char* save_ptr;
 
@@ -40,16 +42,25 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  // Only need program name for thread name
+  user_program_name = strtok_r((char*) file_name, " ", &remaining_args); 
 
   file_name = strtok_r (file_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-
-  if (tid == TID_ERROR) {
+  tid = thread_create (user_program_name, PRI_DEFAULT, start_process, fn_copy);
+  if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
-    return TID_ERROR;
-  }
+  else{
+    //disabling interrupts since dealing with global list of threads
+    enum intr_level old_level = intr_disable();
+    struct thread* curr = thread_current();
+    //finding thread from id then adding it to child processes
+    struct thread* new = find_thread_from_id(tid);
+    ASSERT(new != NULL);
+    list_push_front(&curr->child_processes, &new->child_elem);
+    intr_set_level(old_level);
+  } 
   return tid;
 }
 
@@ -97,10 +108,25 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  while(1){}
-  return -1;
+  // while(1){}
+  // return -1;
+  //check that current thread has children
+  struct thread* curr = thread_current();
+  if(list_empty(&curr->child_processes))
+    return -1;
+  //get child process
+  struct thread* child = find_child_from_id(curr, child_tid);
+  //check that child exists and doesn't have child
+  if(child == NULL || !list_empty(&child->child_processes))
+    return -1;
+  
+  //if both checks were good, we now just wait for the child to exit
+  //so pop it off our list of children and wait for its semaphore
+  list_remove(&child->child_elem);
+  sema_down(&child->wait_child_sema);
+  return child->exit_code;
 }
 
 /* Free the current process's resources. */
@@ -109,6 +135,15 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  printf("%s: exit(%d)\n", cur->name, cur->exit_code);
+  /*call close on all of the process' files*/
+  if(!list_empty(&cur->opened_files)){
+    for(struct list_elem* e = list_begin(&cur->opened_files);
+    e != list_end(&cur->opened_files); e = list_next(e)){
+      struct process_file* f = list_entry(e, struct process_file, elem);
+      close_proc_file(f, true);
+    }
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -227,12 +262,23 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /*pointers to keep track of position in strtok_r*/
+  char* curr_arg;
+  char* remaining_args;
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  /* go through all cli arguments, parsing using strotk_r*/
+  for(curr_arg = strtok_r((char*) file_name, " ", &remaining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remaining_args)){
+    argv[argc] = curr_arg;
+    argc++;
+  }
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -312,6 +358,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
+
+
 
   /* Set up stack. */
   if (!setup_stack (argc, argv, esp))
@@ -496,6 +544,19 @@ setup_stack (int argc, char* argv[], void **esp)
         palloc_free_page (kpage);
     }
   return success;
+}
+
+/*Function used to find a processs_file of given fd under thread
+  returns NULL if no such file exists*/
+struct process_file* find_file(struct thread* t, int fd){
+  struct process_file* curr_file;
+  for(struct list_elem* curr = list_front(&t->opened_files);
+    curr != NULL; curr=curr->next){
+    curr_file = list_entry(curr, struct process_file, elem);
+    if(curr_file->fd == fd)
+      return curr_file;
+  }
+  return NULL;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
