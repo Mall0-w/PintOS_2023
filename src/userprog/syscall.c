@@ -125,6 +125,7 @@ syscall_handler (struct intr_frame *f)
 
 /*handler for SYS_HALT*/
 int halt (const uint8_t* stack){
+  shutdown_power_off();
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
@@ -144,7 +145,13 @@ void proc_exit(int status){
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  return -1;
+  printf("exec\n");
+  tid_t tid;
+  int argv[1];
+  get_args((uint8_t*)stack, 1, argv);
+  char* cmd_line = argv[0];
+  tid = process_execute(cmd_line);
+  return tid;
 }
 
 /*Handler for SYS_WAIT*/
@@ -155,6 +162,7 @@ int wait(const uint8_t* stack){
 /*handler for SYS_CREATE*/
 int create(const uint8_t* stack){
   //get stack args
+  printf("create\n");
   const char* file_name;
   unsigned inital_size;
   uint8_t* curr_pos = stack;
@@ -188,7 +196,7 @@ int remove(const uint8_t* stack){
 
 /*Handler for SYS_OPEn*/
 int open(const uint8_t* stack){
-  //copy filename froms stack
+  //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
@@ -198,6 +206,7 @@ int open(const uint8_t* stack){
   if(f == NULL){
     return -1;
   }
+
   
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));

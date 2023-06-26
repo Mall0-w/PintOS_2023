@@ -32,6 +32,8 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *user_program_name;
+  char *remaining_args;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -40,9 +42,11 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  // Only need program name for thread name
+  user_program_name = strtok_r((char*) file_name, " ", &remaining_args); 
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (user_program_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   else{
@@ -253,12 +257,23 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /*pointers to keep track of position in strtok_r*/
+  char* curr_arg;
+  char* remaining_args;
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  /* go through all cli arguments, parsing using strotk_r*/
+  for(curr_arg = strtok_r((char*) file_name, " ", &remaining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remaining_args)){
+    argv[argc] = curr_arg;
+    argc++;
+  }
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -339,17 +354,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
-  /*pointers to keep track of position in strtok_r*/
-  char* curr_arg;
-  char* remanining_args;
-  char *argv[MAX_ARGS];
-  int argc = 0;
-
-  /* go through all cli arguments, parsing using strotk_r*/
-  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
-    argv[argc] = curr_arg;
-    argc++;
-  }
 
 
   /* Set up stack. */
