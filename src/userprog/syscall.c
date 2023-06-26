@@ -145,7 +145,6 @@ void proc_exit(int status){
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  printf("exec\n");
   tid_t tid;
   int argv[1];
   get_args((uint8_t*)stack, 1, argv);
@@ -162,7 +161,6 @@ int wait(const uint8_t* stack){
 /*handler for SYS_CREATE*/
 int create(const uint8_t* stack){
   //get stack args
-  printf("create\n");
   const char* file_name;
   unsigned inital_size;
   uint8_t* curr_pos = stack;
