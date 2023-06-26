@@ -34,7 +34,6 @@ process_execute (const char *file_name)
   char *user_program_name;
   char *remaining_args;
   tid_t tid;
-  char* save_ptr;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -44,8 +43,6 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
   // Only need program name for thread name
   user_program_name = strtok_r((char*) file_name, " ", &remaining_args); 
-
-  file_name = strtok_r (file_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (user_program_name, PRI_DEFAULT, start_process, fn_copy);

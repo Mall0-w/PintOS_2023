@@ -108,16 +108,16 @@ struct thread
     struct list child_list;
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;                /* List element. */
 
-    int curr_fd;                     /* current file descriptor*/
+    int curr_fd;                          /* current file descriptor*/
     struct list opened_files;             /* list of files opened by the thread*/
 
     struct semaphore wait_child_sema;     /*semaphore used to wait on children*/
     struct list child_processes;          /*list of child processes*/
-    struct list_elem child_elem;           /*elem used in list of child processes*/
+    struct list_elem child_elem;          /*elem used in list of child processes*/
 
-    int exit_code;                           /* exit code for a process*/
+    int exit_code;                        /* exit code for a process*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
