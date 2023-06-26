@@ -253,6 +253,20 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /*pointers to keep track of position in strtok_r*/
+  char* curr_arg;
+  char* remanining_args;
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  /* go through all cli arguments, parsing using strotk_r*/
+  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
+    argv[argc] = curr_arg;
+    argc++;
+  }
+
+  file_name = argv[0];
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -338,18 +352,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-
-  /*pointers to keep track of position in strtok_r*/
-  char* curr_arg;
-  char* remanining_args;
-  char *argv[MAX_ARGS];
-  int argc = 0;
-
-  /* go through all cli arguments, parsing using strotk_r*/
-  for(curr_arg = strtok_r((char*) file_name, " ", &remanining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remanining_args)){
-    argv[argc] = curr_arg;
-    argc++;
-  }
 
 
   /* Set up stack. */
