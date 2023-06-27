@@ -87,7 +87,6 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
   if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
-    printf("invalid vaddr\n");
     return false;
   }  
 
@@ -115,8 +114,9 @@ static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interupt_number;
-  //copy in interrupt number, exit if error occured
-  if(!copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
+  
+  //copy in interrupt number, exit if error occured or if stack is invalid
+  if(pagedir_get_page(thread_current()->pagedir, f->esp) == NULL || !copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
     proc_exit(-1);
   }
   //if interrupt number is valid, call its function and grab return code
