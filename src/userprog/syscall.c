@@ -104,7 +104,7 @@ void
 get_args (uint8_t *stack, int argc, int *argv) {
   int *next_arg;
   for (int i = 0; i < argc; i++) {
-    next_arg = stack + i + i;
+    next_arg = stack + i * sizeof(int);
     argv[i] = *next_arg;
   }
 }
@@ -159,7 +159,6 @@ int exec(const uint8_t* stack){
   tid_t tid;
   int argv[1];
   get_args((uint8_t*)stack, 1, argv);
-
   char* cmd_line = argv[0];
   tid = process_execute(cmd_line);
   return tid;

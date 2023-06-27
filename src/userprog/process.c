@@ -32,6 +32,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *fn_copy2;
   char *user_program_name;
   char *remaining_args;
   tid_t tid;
@@ -42,13 +43,20 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  // Another copy due to not being able to not copying properly from strtok_r
+  fn_copy2 = palloc_get_page (0);
+  if (fn_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy2, file_name, PGSIZE);
+
   // Only need program name for thread name
-  user_program_name = strtok_r((char*) file_name, " ", &remaining_args); 
+  user_program_name = strtok_r((char*) fn_copy, " ", &remaining_args);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (user_program_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (user_program_name, PRI_DEFAULT, start_process, fn_copy2);
+  palloc_free_page (fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
+    palloc_free_page (fn_copy2);
   else{
     //disabling interrupts since dealing with global list of threads
     enum intr_level old_level = intr_disable();
