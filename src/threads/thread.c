@@ -79,6 +79,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 void sort_ready_list_priority(void);
+bool check_current_thread_priority_against_ready(void);
 
 /* Alarm clock functions*/
 bool compare_thread_awake_time (const struct list_elem *a, 
@@ -323,7 +324,7 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
   //since exited process, allow parent to continue
-  //sema_up(&thread_current()->wait_child_sema);
+  sema_up(&thread_current()->wait_child_sema);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -332,17 +333,6 @@ thread_exit (void)
   intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
-
-  struct lock *cur_lock;
-  if (!list_empty(&thread_current()->owned_locks)) {
-    for (struct list_elem *lock_it = list_begin(&thread_current()->owned_locks); 
-          lock_it != list_end(&thread_current()->owned_locks); 
-          lock_it = list_next(lock_it)) {
-      cur_lock = list_entry(lock_it, struct lock, elem);
-      lock_release(cur_lock);   
-    }
-  }
-
   schedule ();
   NOT_REACHED ();
 }
@@ -539,13 +529,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
-  struct child_process *child = malloc(sizeof (struct child_process));
-  child->tid = t->tid;
-  child->exit_status = -1;
-  child->load_status = -1;
-  sema_init(&child->wait_sema, 0);
-  list_push_back(&thread_current()->child_list, &child->elem);
-
   if(thread_mlfqs) {
     // If current thread is the main thread, make nice 0 
     if(t == initial_thread) {
@@ -564,8 +547,8 @@ init_thread (struct thread *t, const char *name, int priority)
   } 
 
   #ifdef USERPROG
-  //sema_init(&t->wait_child_sema, 0);
-  // list_init(&t->child_processes);
+  sema_init(&t->wait_child_sema, 0);
+  list_init(&t->child_processes);
   t->exit_code = -1;
   t->curr_fd = 3;
   list_init(&t->opened_files);
@@ -735,7 +718,6 @@ sort_ready_list_priority(void) {
    priority thread in ready list */
 bool
 check_current_thread_priority_against_ready(void) {
-  if (list_empty(&ready_list)) return false;
   return compare_thread_priority(list_begin(&ready_list), 
                                  &thread_current()->elem, NULL);
 }
@@ -961,19 +943,19 @@ handle_mlfqs(int64_t ticks) {
 
 /*Function used to get child thread with tid id from t's list of child threads
 if no such thread exists, return NULL*/
-struct child* find_child_from_id (struct thread* t, tid_t id){
+struct thread* find_child_from_id (struct thread* t, tid_t id){
   //check if list is empty
-  if(list_empty(&t->child_list))
+  if(list_empty(&t->child_processes))
     return NULL;
   //iterate throuh list looking for thread
-  struct child_process *curr_child;
+  struct thread* curr_thread;
   struct list_elem* e;
-  for (e = list_begin (&t->child_list); 
-  e != list_end (&t->child_list); e = list_next (e)){
+  for (e = list_begin (&t->child_processes); 
+  e != list_end (&t->child_processes); e = list_next (e)){
       //if find thread return
-      curr_child = list_entry(e, struct child_process, elem);
-      if(curr_child->tid == id)
-        return curr_child;
+      curr_thread = list_entry(e, struct thread, child_elem);
+      if(curr_thread->tid == id)
+        return curr_thread;
     }
   return NULL;
 }

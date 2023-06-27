@@ -88,32 +88,25 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-
-    /* Alarm Clock */
-    int64_t awake_time;                /* Time that thread will wake up. */
-
-    /* Priority Donation */
     int priority;                       /* Priority. */
     int effective_priority;             /* Priority accounting for donations */
     struct lock *blocking_lock;         /* Lock that is blocking thread */
     struct list owned_locks;            /* List of locks the thread owns */
-
-    /* Advanced Scheduler */
     int nice;                           /* Nice value for mlfqs */ 
     int64_t recent_cpu;                 /* How much CPU time thread has received recently */
     struct list_elem allelem;           /* List element for all threads list. */
-
-    /* Userprog */
-    struct thread *parent;
-    struct list child_list;
-
+    int64_t awake_time;                /* Time that thread will wake up. */
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;                /* List element. */
+    struct list_elem elem;              /* List element. */
 
-    int curr_fd;                          /* current file descriptor*/
+    int curr_fd;                     /* current file descriptor*/
     struct list opened_files;             /* list of files opened by the thread*/
 
-    int exit_code;                        /* exit code for a process*/
+    struct semaphore wait_child_sema;     /*semaphore used to wait on children*/
+    struct list child_processes;          /*list of child processes*/
+    struct list_elem child_elem;           /*elem used in list of child processes*/
+
+    int exit_code;                           /* exit code for a process*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -123,15 +116,6 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
-
-struct child_process
-   {
-      tid_t tid;
-      int load_status;
-      int exit_status;
-      struct semaphore wait_sema;
-      struct list_elem elem;
-   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -167,7 +151,6 @@ void thread_set_priority (int);
 void thread_sleep(int64_t ticks, int64_t start);
 void awaken_threads(int64_t ticks);
 bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux);
-bool check_current_thread_priority_against_ready(void);
 
 void handle_lock_acquire(struct lock *lock);
 void handle_lock_block(struct lock *lock);
@@ -181,7 +164,7 @@ void handle_mlfqs(int64_t ticks);
 
 /*Function used to get child thread with tid id from t's list of child threads
 if no such thread exists, return NULL*/
-struct child* find_child_from_id (struct thread* t, tid_t id);
+struct thread* find_child_from_id (struct thread* t, tid_t id);
 
 /*Function used to get thread with tid id from the list of all threads
 if no such thread exists, return NULL*/

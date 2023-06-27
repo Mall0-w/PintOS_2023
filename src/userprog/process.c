@@ -17,13 +17,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "threads/malloc.h"
 #include "userprog/syscall.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
-
-/*Lock used to handle filesys concurrency*/
-struct lock file_lock;
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -54,11 +50,14 @@ process_execute (const char *file_name)
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   else{
+    //disabling interrupts since dealing with global list of threads
+    enum intr_level old_level = intr_disable();
+    struct thread* curr = thread_current();
     //finding thread from id then adding it to child processes
-    struct child_process* child = find_child_from_id(thread_current(), tid);
-    ASSERT(child != NULL);
-    sema_down(&child->wait_sema);
-    if (child->load_status = -1) return -1;
+    struct thread* new = find_thread_from_id(tid);
+    ASSERT(new != NULL);
+    list_push_front(&curr->child_processes, &new->child_elem);
+    intr_set_level(old_level);
   } 
   return tid;
 }
@@ -81,17 +80,8 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-
-  struct child_process *child = find_child_from_id(thread_current()->parent, thread_current()->tid);
-
-  if (!success) {
-    child->load_status = -1;
-    sema_up(&child->wait_sema);
+  if (!success) 
     thread_exit ();
-  } else {
-    child->load_status = 1;
-    sema_up(&child->wait_sema);
-  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -119,19 +109,19 @@ process_wait (tid_t child_tid)
   // return -1;
   //check that current thread has children
   struct thread* curr = thread_current();
-  if(list_empty(&curr->child_list))
+  if(list_empty(&curr->child_processes))
     return -1;
   //get child process
-  struct child_process *child = find_child_from_id(curr, child_tid);
+  struct thread* child = find_child_from_id(curr, child_tid);
   //check that child exists and doesn't have child
-  if(child == NULL)
+  if(child == NULL || !list_empty(&child->child_processes))
     return -1;
   
   //if both checks were good, we now just wait for the child to exit
   //so pop it off our list of children and wait for its semaphore
-  list_remove(&child->elem);
-  sema_down(&child->wait_sema);
-  return child->exit_status;
+  list_remove(&child->child_elem);
+  sema_down(&child->wait_child_sema);
+  return child->exit_code;
 }
 
 /* Free the current process's resources. */
@@ -141,12 +131,6 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
-
-  struct child_process *child = find_child_from_id(thread_current()->parent, thread_current()->tid);
-  child->exit_status = cur->exit_code;
-  sema_up(&child->wait_sema);
-
-  lock_acquire(&file_lock);
   /*call close on all of the process' files*/
   if(!list_empty(&cur->opened_files)){
     for(struct list_elem* e = list_begin(&cur->opened_files);
@@ -155,7 +139,6 @@ process_exit (void)
       close_proc_file(f, true);
     }
   }
-  lock_release(&file_lock);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -510,47 +493,39 @@ setup_stack (int argc, char* argv[], void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success){
         *esp = PHYS_BASE;
-        *esp = PHYS_BASE;
         char* arg_pointers[argc];
         int offset = 0;
         //pushing args onto stack in reverse order
         for(int i = argc - 1; i >= 0; i--){
           //offset stack pointer with enough room for arg, offset length by 1 for null term
           //using 128 as limit for strlen because of limit said in docs
-          offset = sizeof (char) * (strnlen (argv[i], 128) + 1);
+          offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
           *esp = *esp - offset;
           //copy arg into stack
-          memcpy (*esp, argv[i], offset);
+          memcpy(*esp, argv[i], offset);
           //copy that pointer into the args
           arg_pointers[i] = *esp;
         }
-
         //round the current stack position down by 4 to align with words
         *esp = round_word_down(*esp);
         //offset word for null pointer sentinel
-        *esp = (char *) *esp - sizeof (char *);
-        char *sentinel = NULL;
-        memcpy (*esp, &sentinel, sizeof (char *));
-
+        *esp = *esp - sizeof(int*);
+        *((int**) *esp) = NULL;
         //push pointers onto stack, again in reverse order
-        for(int i = argc - 1; i >= 0; i--) {
-          *esp = (char *) *esp - sizeof (char *);
-          memcpy (*esp, &arg_pointers[i], sizeof (char *));
+        for(int i = argc - 1; i >= 0; i--){
+          *esp = *esp - sizeof(char*);
+          *((char**) *esp) = arg_pointers[i];
         }
         //now push pointer to first arg, argc, and null pointer for return address
         //first arg
-        char **argv_ptr = *esp;
-        *esp = (char *) *esp - sizeof (char **);
-        memcpy (&esp, &argv_ptr, sizeof (char **));
-        
+        *esp = *esp - sizeof(char**);
+        *((char***) *esp) = *esp + sizeof(char*);
         //argc
-        *esp = (char *) *esp - sizeof (char *);
-        memcpy (*esp, &argc, sizeof (int));        
-
+        *esp = *esp - sizeof(int*);
+        *((int*) *esp) = argc;
         //return address
-        void *ret_addr = NULL;
-        *esp = (char *) *esp - sizeof (char *);
-        memcpy (&esp, &ret_addr, sizeof (void *));
+        *esp = *esp - sizeof(int*);
+        *((int**) *esp) = NULL;
       }
       else
         palloc_free_page (kpage);
@@ -562,8 +537,6 @@ setup_stack (int argc, char* argv[], void **esp)
   returns NULL if no such file exists*/
 struct process_file* find_file(struct thread* t, int fd){
   struct process_file* curr_file;
-  if(list_empty(&t->opened_files))
-    return NULL;
   for(struct list_elem* curr = list_front(&t->opened_files);
     curr != NULL; curr=curr->next){
     curr_file = list_entry(curr, struct process_file, elem);
