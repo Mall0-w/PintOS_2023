@@ -113,10 +113,6 @@ struct thread
     int curr_fd;                          /* current file descriptor*/
     struct list opened_files;             /* list of files opened by the thread*/
 
-    struct semaphore wait_child_sema;     /*semaphore used to wait on children*/
-    struct list child_processes;          /*list of child processes*/
-    struct list_elem child_elem;          /*elem used in list of child processes*/
-
     int exit_code;                        /* exit code for a process*/
 
 #ifdef USERPROG
@@ -185,7 +181,7 @@ void handle_mlfqs(int64_t ticks);
 
 /*Function used to get child thread with tid id from t's list of child threads
 if no such thread exists, return NULL*/
-struct thread* find_child_from_id (struct thread* t, tid_t id);
+struct child* find_child_from_id (struct thread* t, tid_t id);
 
 /*Function used to get thread with tid id from the list of all threads
 if no such thread exists, return NULL*/

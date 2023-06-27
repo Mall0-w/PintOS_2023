@@ -954,19 +954,19 @@ handle_mlfqs(int64_t ticks) {
 
 /*Function used to get child thread with tid id from t's list of child threads
 if no such thread exists, return NULL*/
-struct thread* find_child_from_id (struct thread* t, tid_t id){
+struct child* find_child_from_id (struct thread* t, tid_t id){
   //check if list is empty
-  if(list_empty(&t->child_processes))
+  if(list_empty(&t->child_list))
     return NULL;
   //iterate throuh list looking for thread
-  struct thread* curr_thread;
+  struct child_process *curr_child;
   struct list_elem* e;
-  for (e = list_begin (&t->child_processes); 
-  e != list_end (&t->child_processes); e = list_next (e)){
+  for (e = list_begin (&t->child_list); 
+  e != list_end (&t->child_list); e = list_next (e)){
       //if find thread return
-      curr_thread = list_entry(e, struct thread, child_elem);
-      if(curr_thread->tid == id)
-        return curr_thread;
+      curr_child = list_entry(e, struct child_process, elem);
+      if(curr_child->tid == id)
+        return curr_child;
     }
   return NULL;
 }

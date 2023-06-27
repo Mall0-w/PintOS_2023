@@ -20,6 +20,11 @@
 #include "threads/malloc.h"
 #include "userprog/syscall.h"
 
+#define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
+
+/*Lock used to handle filesys concurrency*/
+struct lock file_lock;
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -49,14 +54,11 @@ process_execute (const char *file_name)
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   else{
-    //disabling interrupts since dealing with global list of threads
-    enum intr_level old_level = intr_disable();
-    struct thread* curr = thread_current();
     //finding thread from id then adding it to child processes
-    struct thread* new = find_thread_from_id(tid);
-    ASSERT(new != NULL);
-    list_push_front(&curr->child_processes, &new->child_elem);
-    intr_set_level(old_level);
+    struct child_process* child = find_child_from_id(thread_current(), tid);
+    ASSERT(child != NULL);
+    sema_down(&child->wait_sema);
+    if (child->load_status = -1) return -1;
   } 
   return tid;
 }
@@ -69,9 +71,6 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  char *save_ptr;
-
-  file_name = strtok_r ((char *) file_name, " ", &save_ptr);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -82,8 +81,17 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+
+  struct child_process *child = find_child_from_id(thread_current()->parent, thread_current()->tid);
+
+  if (!success) {
+    child->load_status = -1;
+    sema_up(&child->wait_sema);
     thread_exit ();
+  } else {
+    child->load_status = 1;
+    sema_up(&child->wait_sema);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -111,19 +119,19 @@ process_wait (tid_t child_tid)
   // return -1;
   //check that current thread has children
   struct thread* curr = thread_current();
-  if(list_empty(&curr->child_processes))
+  if(list_empty(&curr->child_list))
     return -1;
   //get child process
-  struct thread* child = find_child_from_id(curr, child_tid);
+  struct child_process *child = find_child_from_id(curr, child_tid);
   //check that child exists and doesn't have child
-  if(child == NULL || !list_empty(&child->child_processes))
+  if(child == NULL)
     return -1;
   
   //if both checks were good, we now just wait for the child to exit
   //so pop it off our list of children and wait for its semaphore
-  list_remove(&child->child_elem);
-  sema_down(&child->wait_child_sema);
-  return child->exit_code;
+  list_remove(&child->elem);
+  sema_down(&child->wait_sema);
+  return child->exit_status;
 }
 
 /* Free the current process's resources. */
@@ -133,6 +141,12 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
+
+  struct child_process *child = find_child_from_id(thread_current()->parent, thread_current()->tid);
+  child->exit_status = cur->exit_code;
+  sema_up(&child->wait_sema);
+
+  lock_acquire(&file_lock);
   /*call close on all of the process' files*/
   if(!list_empty(&cur->opened_files)){
     for(struct list_elem* e = list_begin(&cur->opened_files);
@@ -141,6 +155,7 @@ process_exit (void)
       close_proc_file(f, true);
     }
   }
+  lock_release(&file_lock);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
