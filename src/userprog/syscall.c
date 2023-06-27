@@ -322,7 +322,7 @@ int read(const uint8_t* stack){
     lock_release(&file_lock);
     return -1;
   }
-  size = file_read(f->file, buffer, size);
+  size = file_read(f->file, buffer, (off_t)size);
   lock_release(&file_lock);
   return (int)size;
 }
