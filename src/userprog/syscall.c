@@ -12,6 +12,8 @@
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include <string.h>
+#include "devices/input.h"
+#include "userprog/pagedir.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(const uint8_t* stack) = {
@@ -85,7 +87,6 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
   if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
-    printf("invalid vaddr\n");
     return false;
   }  
 
@@ -113,8 +114,9 @@ static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interupt_number;
-  //copy in interrupt number, exit if error occured
-  if(!copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
+  
+  //copy in interrupt number, exit if error occured or if stack is invalid
+  if(pagedir_get_page(thread_current()->pagedir, f->esp) == NULL || !copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
     proc_exit(-1);
   }
   //if interrupt number is valid, call its function and grab return code
@@ -159,6 +161,12 @@ int exec(const uint8_t* stack){
   tid_t tid;
   int argv[1];
   get_args((uint8_t*)stack, 1, argv);
+  if(pagedir_get_page(thread_current()->pagedir, (void*)argv[0]) == NULL){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
   char* cmd_line = argv[0];
   tid = process_execute(cmd_line);
   return tid;
@@ -187,7 +195,8 @@ int create(const uint8_t* stack){
   if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
     return -1;
   
-  if((int*) file_name == NULL){
+  //checking for null filename or invalid ptr
+  if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -225,7 +234,8 @@ int open(const uint8_t* stack){
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
   
-  if((int*) file_name == NULL){
+  //check for null filename or invalid ptr
+  if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -291,8 +301,18 @@ int read(const uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
   
+  //check for invalid ptr first
+  if(pagedir_get_page(thread_current()->pagedir,buffer) == NULL){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
+
   if(fd == STDOUT_FILENO){
     return -1;
+  }else if(fd == STDIN_FILENO){
+    return (int) input_getc();
   }
 
   //acquire lock, find file and read
@@ -310,7 +330,6 @@ int read(const uint8_t* stack){
 /*Handler for SYS_WRITE*/
 int write(const uint8_t* stack){
   uint8_t* curr_address = stack;
-  //int fd = *((int*) curr_address);
   int fd;
   char* buffer;
   int size;
@@ -326,6 +345,14 @@ int write(const uint8_t* stack){
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
   
+  //checking for invalid ptr
+  if(pagedir_get_page(thread_current()->pagedir, buffer) == NULL){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
+
   //if to stdout, just put to the buffer
   if(fd == STDOUT_FILENO){
     putbuf(buffer, size);
