@@ -33,6 +33,10 @@ static int (*handlers[])(const uint8_t* stack) = {
 /*Lock used to handle filesys concurrency*/
 struct lock file_lock;
 
+struct lock error_lock;
+
+bool raised_error = false;
+
 static void syscall_handler (struct intr_frame *);
 
 
@@ -41,6 +45,7 @@ syscall_init (void)
 {
   //have to init lock before register, since register calls syscall handler
   lock_init(&file_lock);
+  lock_init(&error_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -116,6 +121,12 @@ syscall_handler (struct intr_frame *f)
   if(interupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
     f->eax = handlers[interupt_number](f->esp + sizeof(unsigned));
+    if(raised_error){
+      lock_acquire(&error_lock);
+      raised_error = false;
+      lock_release(&error_lock);
+      proc_exit(-1);
+    }
   }else{
     //otherwise return code is -1
     f->eax = -1;
@@ -148,8 +159,7 @@ int exec(const uint8_t* stack){
   tid_t tid;
   int argv[1];
   get_args((uint8_t*)stack, 1, argv);
-  if(!is_kernel_vaddr((void*) argv) || !is_user_vaddr((void*) argv))
-    return -1;
+
   char* cmd_line = argv[0];
   tid = process_execute(cmd_line);
   return tid;
@@ -172,14 +182,19 @@ int create(const uint8_t* stack){
   uint8_t* curr_pos = stack;
   //copy in arguments
   if(!copy_in(&file_name, curr_pos, sizeof(char*)))
-    return 0;
+    return -1;
   curr_pos += sizeof(char*);
 
   if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
-    return 0;
+    return -1;
   
-  // if(!is_user_vaddr((void*) file_name) || !is_kernel_vaddr((void*) file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
-  //   return 0;
+  if((int*) file_name == NULL){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
+    
 
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
@@ -210,8 +225,14 @@ int open(const uint8_t* stack){
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
-  // if(!is_user_vaddr((void*) file_name) || !is_kernel_vaddr((void*) file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
-  //   return -1;
+  
+  if((int*) file_name == NULL){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
+  
   //open file
   lock_acquire(&file_lock);
   struct file* f = filesys_open(file_name);
