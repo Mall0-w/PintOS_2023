@@ -34,6 +34,7 @@ struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
 
+
 void
 syscall_init (void) 
 {
@@ -74,6 +75,7 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   ASSERT (dst_ != NULL || size == 0);
   ASSERT (usrc_ != NULL || size == 0);
   
+  int curr;
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
   if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
@@ -90,6 +92,15 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
     *dst = curr;
   }
   return true;
+}
+
+void
+get_args (uint8_t *stack, int argc, int *argv) {
+  int *next_arg;
+  for (int i = 0; i < argc; i++) {
+    next_arg = stack + i + i;
+    argv[i] = *next_arg;
+  }
 }
 
 static void
@@ -109,11 +120,11 @@ syscall_handler (struct intr_frame *f)
     f->eax = -1;
     proc_exit(-1);
   }
-  // thread_exit();
 }
 
 /*handler for SYS_HALT*/
 int halt (const uint8_t* stack){
+  shutdown_power_off();
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
@@ -133,12 +144,21 @@ void proc_exit(int status){
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  return -1;
+  tid_t tid;
+  int argv[1];
+  get_args((uint8_t*)stack, 1, argv);
+  char* cmd_line = argv[0];
+  tid = process_execute(cmd_line);
+  return tid;
 }
 
 /*Handler for SYS_WAIT*/
 int wait(const uint8_t* stack){
-  return -1;
+  int argv[1];
+  get_args((uint8_t*)stack, 1, argv);
+  int pid = argv[0];
+  int status = process_wait(pid);
+  return status;
 }
 
 /*handler for SYS_CREATE*/
@@ -177,7 +197,7 @@ int remove(const uint8_t* stack){
 
 /*Handler for SYS_OPEn*/
 int open(const uint8_t* stack){
-  //copy filename froms stack
+  //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
@@ -187,6 +207,7 @@ int open(const uint8_t* stack){
   if(f == NULL){
     return -1;
   }
+
   
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));
