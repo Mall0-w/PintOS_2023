@@ -323,7 +323,7 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
   //since exited process, allow parent to continue
-  sema_up(&thread_current()->wait_child_sema);
+  //sema_up(&thread_current()->wait_child_sema);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -539,6 +539,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  struct child_process *child = malloc(sizeof (struct child_process));
+  child->tid = t->tid;
+  child->exit_status = -1;
+  child->load_status = -1;
+  sema_init(&child->wait_sema, 0);
+  list_push_back(&thread_current()->child_list, &child->elem);
+
   if(thread_mlfqs) {
     // If current thread is the main thread, make nice 0 
     if(t == initial_thread) {
@@ -557,8 +564,8 @@ init_thread (struct thread *t, const char *name, int priority)
   } 
 
   #ifdef USERPROG
-  sema_init(&t->wait_child_sema, 0);
-  list_init(&t->child_processes);
+  //sema_init(&t->wait_child_sema, 0);
+  // list_init(&t->child_processes);
   t->exit_code = -1;
   t->curr_fd = 3;
   list_init(&t->opened_files);
