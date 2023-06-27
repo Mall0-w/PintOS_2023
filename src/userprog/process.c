@@ -562,6 +562,8 @@ setup_stack (int argc, char* argv[], void **esp)
   returns NULL if no such file exists*/
 struct process_file* find_file(struct thread* t, int fd){
   struct process_file* curr_file;
+  if(list_empty(&t->opened_files))
+    return NULL;
   for(struct list_elem* curr = list_front(&t->opened_files);
     curr != NULL; curr=curr->next){
     curr_file = list_entry(curr, struct process_file, elem);
