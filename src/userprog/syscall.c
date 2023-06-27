@@ -169,12 +169,11 @@ int create(const uint8_t* stack){
   uint8_t* curr_pos = stack;
   //copy in arguments
   if(!copy_in(&file_name, curr_pos, sizeof(char*)))
-    return 0;
+    return false;
   curr_pos += sizeof(char*);
 
   if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
-    return ;
-
+    return false;
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
   bool success = filesys_create(file_name, inital_size);
@@ -259,9 +258,6 @@ int read(const uint8_t* stack){
   curr_pos += sizeof(void*);
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
-
-  if(fd == STDOUT_FILENO || !is_user_vaddr(&fd))
-    return -1;
   
   //acquire lock, find file and read
   lock_acquire(&file_lock);
@@ -292,9 +288,6 @@ int write(const uint8_t* stack){
   //char* buffer = *((char**)curr_address);
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
-    return -1;
-  
-  if(fd == STDIN_FILENO || !is_user_vaddr(&fd))
     return -1;
   
   //if to stdout, just put to the buffer
@@ -328,7 +321,8 @@ int seek(const uint8_t* stack){
   curr_pos += sizeof(int);
 
   if(!copy_in(&position, curr_pos, sizeof(unsigned)))
-    return -1;  
+    return -1;
+  
   //acquire lock and find file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
@@ -370,19 +364,10 @@ int close(const uint8_t* stack){
   if(!copy_in(&fd, stack, sizeof(int)))
     return -1;
   //acquire lock and file
-  if(fd == STDIN_FILENO || fd == STDOUT_FILENO || !is_user_vaddr(&fd)){
-    return -1;
-  }
-
   lock_acquire(&file_lock);
-  struct thread* t = thread_current();
-  int size = list_size(&t->child_processes);
   struct process_file* f = find_file(thread_current(), fd);
-  if(f == NULL)
-    return -1;
   //call handler for closing process file based on process_file
   close_proc_file(f, true);
-  size = list_size(&t->child_processes);
   return 1;
 }
 
@@ -390,7 +375,6 @@ int close(const uint8_t* stack){
 if release_lock is true it will release file_lock*/
 void close_proc_file(struct process_file* f, bool release_lock){
   ASSERT(f != NULL);
-  struct thread* t = thread_current();
   //check if already holding file lock, if not acquire it
   if(file_lock.holder != thread_current())
     lock_acquire(&file_lock);
