@@ -47,6 +47,7 @@ process_execute (const char *file_name)
   fn_copy2 = palloc_get_page (0);
   if (fn_copy2 == NULL)
     return TID_ERROR;
+  strlcpy (fn_copy2, file_name, PGSIZE);
 
   // Only need program name for thread name
   user_program_name = strtok_r((char*) fn_copy, " ", &remaining_args);

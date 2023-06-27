@@ -98,7 +98,7 @@ void
 get_args (uint8_t *stack, int argc, int *argv) {
   int *next_arg;
   for (int i = 0; i < argc; i++) {
-    next_arg = stack + i + i;
+    next_arg = stack + i * sizeof(int);
     argv[i] = *next_arg;
   }
 }
