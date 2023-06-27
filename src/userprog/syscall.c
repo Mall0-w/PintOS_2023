@@ -68,11 +68,35 @@ put_user (uint8_t *udst, uint8_t byte)
   return error_code != -1;
 }
 
+/*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
+bool copy_in (void* dst_, const void* usrc_, size_t size){
+  ASSERT (dst_ != NULL || size == 0);
+  ASSERT (usrc_ != NULL || size == 0);
+  
+  int curr;
+  uint8_t* dst = dst_;
+  const uint8_t* usrc = usrc_;
+  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
+    printf("invalid vaddr\n");
+    return false;
+  }  
+
+  for(; size > 0; size--, dst++, usrc++){
+    int curr = get_user(usrc);
+    if(curr == -1){
+      printf("segfault\n");
+      return false;
+    }
+    *dst = curr;
+  }
+  return true;
+}
+
 void
 get_args (uint8_t *stack, int argc, int *argv) {
   int *next_arg;
   for (int i = 0; i < argc; i++) {
-    next_arg = stack + i + i;
+    next_arg = stack + i * sizeof(int);
     argv[i] = *next_arg;
   }
 }
@@ -82,7 +106,7 @@ syscall_handler (struct intr_frame *f)
 { 
   unsigned interupt_number;
   //copy in interrupt number, exit if error occured
-  if(!memcpy(&interupt_number, f->esp, sizeof(interupt_number))){
+  if(!copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
     proc_exit(-1);
   }
   //if interrupt number is valid, call its function and grab return code
@@ -105,7 +129,7 @@ int halt (const uint8_t* stack){
 /*HANDLER FOR SYS_EXIT*/
 int syscall_exit(const uint8_t* stack){
   int status;
-  if(!memcpy(&status, stack, sizeof(int)))
+  if(!copy_in(&status, stack, sizeof(int)))
     status = -1;
   thread_exit();
   return status;
@@ -143,11 +167,11 @@ int create(const uint8_t* stack){
   unsigned inital_size;
   uint8_t* curr_pos = stack;
   //copy in arguments
-  if(!memcpy(&file_name, curr_pos, sizeof(char*)))
+  if(!copy_in(&file_name, curr_pos, sizeof(char*)))
     return false;
   curr_pos += sizeof(char*);
 
-  if(!memcpy(&inital_size, curr_pos, sizeof(unsigned)))
+  if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
     return false;
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
@@ -161,7 +185,7 @@ int create(const uint8_t* stack){
 int remove(const uint8_t* stack){
   //get the file name
   const char* file_name;
-  if(!memcpy(&file_name, stack, sizeof(char*)))
+  if(!copy_in(&file_name, stack, sizeof(char*)))
     return false;
   //acquire lock, remove then release
   lock_acquire(&file_lock);
@@ -174,7 +198,7 @@ int remove(const uint8_t* stack){
 int open(const uint8_t* stack){
   //copy filename from stack
   char* file_name;
-  if (!memcpy(&file_name, stack, sizeof(char*)))
+  if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
   //open file
   lock_acquire(&file_lock);
@@ -203,7 +227,7 @@ int open(const uint8_t* stack){
 int filesize(const uint8_t* stack){
   //copy in fd
   int fd;
-  if(!memcpy(&fd, stack, sizeof(int)))
+  if(!copy_in(&fd, stack, sizeof(int)))
     return 0;
   //acquire lock, file from fd, then get size
   lock_acquire(&file_lock);
@@ -225,13 +249,13 @@ int read(const uint8_t* stack){
   int size;
   uint8_t* curr_pos = stack;
   //collect args
-  if(!memcpy(&fd, curr_pos, sizeof(int)))
+  if(!copy_in(&fd, curr_pos, sizeof(int)))
     return -1;
   curr_pos += sizeof(int);
-  if(!memcpy(&buffer, curr_pos, sizeof(void*)))
+  if(!copy_in(&buffer, curr_pos, sizeof(void*)))
     return -1;
   curr_pos += sizeof(void*);
-  if(!memcpy(&size, curr_pos, sizeof(unsigned)))
+  if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
   
   //acquire lock, find file and read
@@ -255,14 +279,14 @@ int write(const uint8_t* stack){
   int size;
 
   //copy in respective arguments, checking for valid addresses
-  if(!memcpy(&fd, (int*)curr_address, sizeof(int)))
+  if(!copy_in(&fd, (int*)curr_address, sizeof(int)))
     return -1;
   curr_address += sizeof(int);
-  if(!memcpy(&buffer, (char**)curr_address,sizeof(char*)))
+  if(!copy_in(&buffer, (char**)curr_address,sizeof(char*)))
     return -1;
   //char* buffer = *((char**)curr_address);
   curr_address += sizeof(char*);
-  if(!memcpy(&size, (int*)curr_address, sizeof(int)))
+  if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
   
   //if to stdout, just put to the buffer
@@ -290,12 +314,12 @@ int seek(const uint8_t* stack){
   int fd;
   unsigned position;
   uint8_t* curr_pos = stack;
-  if(!memcpy(&fd, curr_pos, sizeof(int)))
+  if(!copy_in(&fd, curr_pos, sizeof(int)))
     return -1;
   
   curr_pos += sizeof(int);
 
-  if(!memcpy(&position, curr_pos, sizeof(unsigned)))
+  if(!copy_in(&position, curr_pos, sizeof(unsigned)))
     return -1;
   
   //acquire lock and find file
@@ -316,7 +340,7 @@ int seek(const uint8_t* stack){
 int tell(const uint8_t* stack){
   //copy in args
   int fd;
-  if(!memcpy(&fd, stack, sizeof(int)))
+  if(!copy_in(&fd, stack, sizeof(int)))
     return 0;
   struct thread* t = thread_current();
   //acquire lock and file
@@ -336,7 +360,7 @@ int tell(const uint8_t* stack){
 int close(const uint8_t* stack){
   //copy in args
   int fd;
-  if(!memcpy(&fd, stack, sizeof(int)))
+  if(!copy_in(&fd, stack, sizeof(int)))
     return -1;
   //acquire lock and file
   lock_acquire(&file_lock);
