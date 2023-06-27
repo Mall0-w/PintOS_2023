@@ -11,6 +11,7 @@
 #include "userprog/process.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include <string.h>
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(const uint8_t* stack) = {
@@ -147,6 +148,8 @@ int exec(const uint8_t* stack){
   tid_t tid;
   int argv[1];
   get_args((uint8_t*)stack, 1, argv);
+  if(!is_kernel_vaddr((void*) argv) || !is_user_vaddr((void*) argv))
+    return -1;
   char* cmd_line = argv[0];
   tid = process_execute(cmd_line);
   return tid;
@@ -169,11 +172,15 @@ int create(const uint8_t* stack){
   uint8_t* curr_pos = stack;
   //copy in arguments
   if(!copy_in(&file_name, curr_pos, sizeof(char*)))
-    return false;
+    return 0;
   curr_pos += sizeof(char*);
 
   if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
-    return false;
+    return 0;
+  
+  if(!is_user_vaddr((void*) file_name) || !is_kernel_vaddr((void*) file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
+    return 0;
+
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
   bool success = filesys_create(file_name, inital_size);
@@ -188,6 +195,8 @@ int remove(const uint8_t* stack){
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
     return false;
+  if(!is_user_vaddr(file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
+    return -1;
   //acquire lock, remove then release
   lock_acquire(&file_lock);
   bool success = filesys_remove(file_name);
@@ -200,6 +209,8 @@ int open(const uint8_t* stack){
   //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
+    return -1;
+  if(!is_user_vaddr((void*) file_name) || !is_kernel_vaddr((void*) file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
     return -1;
   //open file
   lock_acquire(&file_lock);
@@ -230,6 +241,7 @@ int filesize(const uint8_t* stack){
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
     return 0;
+
   //acquire lock, file from fd, then get size
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
@@ -259,6 +271,10 @@ int read(const uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
   
+  if(fd == STDOUT_FILENO || !is_user_vaddr(buffer) || !is_kernel_vaddr(buffer)){
+    return -1;
+  }
+
   //acquire lock, find file and read
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
@@ -291,7 +307,7 @@ int write(const uint8_t* stack){
     return -1;
   
   //if to stdout, just put to the buffer
-  if(fd == STDOUT_FILENO){
+  if(fd == STDOUT_FILENO || !is_user_vaddr(buffer) || !is_kernel_vaddr(buffer)){
     putbuf(buffer, size);
     return size;
   }
@@ -363,9 +379,14 @@ int close(const uint8_t* stack){
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
     return -1;
+
+  if(fd == STDIN_FILENO || fd == STDOUT_FILENO)
+    return -1;
   //acquire lock and file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
+  if(f == NULL)
+    return -1;
   //call handler for closing process file based on process_file
   close_proc_file(f, true);
   return 1;
