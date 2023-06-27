@@ -34,7 +34,6 @@ struct lock file_lock;
 
 static void syscall_handler (struct intr_frame *);
 
-
 void
 syscall_init (void) 
 {
@@ -75,7 +74,6 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   ASSERT (dst_ != NULL || size == 0);
   ASSERT (usrc_ != NULL || size == 0);
   
-  int curr;
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
   if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
@@ -92,15 +90,6 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
     *dst = curr;
   }
   return true;
-}
-
-void
-get_args (uint8_t *stack, int argc, int *argv) {
-  int *next_arg;
-  for (int i = 0; i < argc; i++) {
-    next_arg = stack + i + i;
-    argv[i] = *next_arg;
-  }
 }
 
 static void
@@ -120,11 +109,11 @@ syscall_handler (struct intr_frame *f)
     f->eax = -1;
     proc_exit(-1);
   }
+  // thread_exit();
 }
 
 /*handler for SYS_HALT*/
 int halt (const uint8_t* stack){
-  shutdown_power_off();
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
@@ -144,21 +133,12 @@ void proc_exit(int status){
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  tid_t tid;
-  int argv[1];
-  get_args((uint8_t*)stack, 1, argv);
-  char* cmd_line = argv[0];
-  tid = process_execute(cmd_line);
-  return tid;
+  return -1;
 }
 
 /*Handler for SYS_WAIT*/
 int wait(const uint8_t* stack){
-  int argv[1];
-  get_args((uint8_t*)stack, 1, argv);
-  int pid = argv[0];
-  int status = process_wait(pid);
-  return status;
+  return -1;
 }
 
 /*handler for SYS_CREATE*/
@@ -169,12 +149,11 @@ int create(const uint8_t* stack){
   uint8_t* curr_pos = stack;
   //copy in arguments
   if(!copy_in(&file_name, curr_pos, sizeof(char*)))
-    return 0;
+    return false;
   curr_pos += sizeof(char*);
 
   if(!copy_in(&inital_size, curr_pos, sizeof(unsigned)))
-    return ;
-
+    return false;
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
   bool success = filesys_create(file_name, inital_size);
@@ -198,7 +177,7 @@ int remove(const uint8_t* stack){
 
 /*Handler for SYS_OPEn*/
 int open(const uint8_t* stack){
-  //copy filename from stack
+  //copy filename froms stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
@@ -208,7 +187,6 @@ int open(const uint8_t* stack){
   if(f == NULL){
     return -1;
   }
-
   
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));
@@ -259,9 +237,6 @@ int read(const uint8_t* stack){
   curr_pos += sizeof(void*);
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
-
-  if(fd == STDOUT_FILENO || !is_user_vaddr(&fd))
-    return -1;
   
   //acquire lock, find file and read
   lock_acquire(&file_lock);
@@ -292,9 +267,6 @@ int write(const uint8_t* stack){
   //char* buffer = *((char**)curr_address);
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
-    return -1;
-  
-  if(fd == STDIN_FILENO || !is_user_vaddr(&fd))
     return -1;
   
   //if to stdout, just put to the buffer
@@ -328,7 +300,8 @@ int seek(const uint8_t* stack){
   curr_pos += sizeof(int);
 
   if(!copy_in(&position, curr_pos, sizeof(unsigned)))
-    return -1;  
+    return -1;
+  
   //acquire lock and find file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
@@ -370,19 +343,10 @@ int close(const uint8_t* stack){
   if(!copy_in(&fd, stack, sizeof(int)))
     return -1;
   //acquire lock and file
-  if(fd == STDIN_FILENO || fd == STDOUT_FILENO || !is_user_vaddr(&fd)){
-    return -1;
-  }
-
   lock_acquire(&file_lock);
-  struct thread* t = thread_current();
-  int size = list_size(&t->child_processes);
   struct process_file* f = find_file(thread_current(), fd);
-  if(f == NULL)
-    return -1;
   //call handler for closing process file based on process_file
   close_proc_file(f, true);
-  size = list_size(&t->child_processes);
   return 1;
 }
 
@@ -390,7 +354,6 @@ int close(const uint8_t* stack){
 if release_lock is true it will release file_lock*/
 void close_proc_file(struct process_file* f, bool release_lock){
   ASSERT(f != NULL);
-  struct thread* t = thread_current();
   //check if already holding file lock, if not acquire it
   if(file_lock.holder != thread_current())
     lock_acquire(&file_lock);
