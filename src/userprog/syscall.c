@@ -120,7 +120,6 @@ syscall_handler (struct intr_frame *f)
     f->eax = -1;
     proc_exit(-1);
   }
-  // thread_exit();
 }
 
 /*handler for SYS_HALT*/
@@ -155,7 +154,11 @@ int exec(const uint8_t* stack){
 
 /*Handler for SYS_WAIT*/
 int wait(const uint8_t* stack){
-  return -1;
+  int argv[1];
+  get_args((uint8_t*)stack, 1, argv);
+  int pid = argv[0];
+  int status = process_wait(pid);
+  return status;
 }
 
 /*handler for SYS_CREATE*/
