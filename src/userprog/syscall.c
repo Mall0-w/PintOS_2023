@@ -148,8 +148,6 @@ int exec(const uint8_t* stack){
   tid_t tid;
   int argv[1];
   get_args((uint8_t*)stack, 1, argv);
-  if(!is_kernel_vaddr((void*) argv) || !is_user_vaddr((void*) argv))
-    return -1;
   char* cmd_line = argv[0];
   tid = process_execute(cmd_line);
   return tid;
