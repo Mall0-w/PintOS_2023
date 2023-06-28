@@ -313,7 +313,10 @@ int read(const uint8_t* stack){
   if(fd == STDOUT_FILENO){
     return -1;
   }else if(fd == STDIN_FILENO){
-    return (int) input_getc();
+    for(int i = 0; i < size; i++){
+      *((uint8_t*)buffer + i) = input_getc();
+    }
+    return (int) size;
   }
 
   //acquire lock, find file and read
