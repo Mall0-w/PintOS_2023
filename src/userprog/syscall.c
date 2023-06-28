@@ -289,12 +289,13 @@ int filesize(const uint8_t* stack){
 int read(const uint8_t* stack){
   int fd;
   void* buffer;
-  int size;
+  unsigned size;
   uint8_t* curr_pos = stack;
   //collect args
   if(!copy_in(&fd, curr_pos, sizeof(int)))
     return -1;
   curr_pos += sizeof(int);
+  
   if(!copy_in(&buffer, curr_pos, sizeof(void*)))
     return -1;
   curr_pos += sizeof(void*);
@@ -302,7 +303,7 @@ int read(const uint8_t* stack){
     return -1;
   
   //check for invalid ptr first
-  if(pagedir_get_page(thread_current()->pagedir,buffer) == NULL){
+  if(!is_user_vaddr(buffer) || (thread_current()->pagedir,buffer) == NULL){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -322,9 +323,9 @@ int read(const uint8_t* stack){
     lock_release(&file_lock);
     return -1;
   }
-  size = file_read(f->file, buffer, (off_t)size);
+  int read_size = file_read(f->file, buffer, (off_t) size);
   lock_release(&file_lock);
-  return (int)size;
+  return read_size;
 }
 
 /*Handler for SYS_WRITE*/
