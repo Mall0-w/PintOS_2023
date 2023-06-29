@@ -125,8 +125,6 @@ thread_init (void)
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 
-  initial_thread->parent = NULL;
-
   if (thread_mlfqs) {
     load_avg = int_to_fp(0); // Initialize load_avg to 0 if mlfqs is true
   }
@@ -325,6 +323,8 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
+  //since exited process, allow parent to continue
+  sema_up(&thread_current()->wait_child_sema);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -547,16 +547,13 @@ init_thread (struct thread *t, const char *name, int priority)
   } 
 
   #ifdef USERPROG
-  sema_init(&t->wait_sema, 0);
-  sema_init(&t->exec_sema, 0);
+  sema_init(&t->wait_child_sema, 0);
   list_init(&t->child_processes);
   t->exit_code = -1;
+  t->child_exit_code = -1;
+  t->parent = NULL;
   t->curr_fd = 3;
   list_init(&t->opened_files);
-  t->parent = NULL;
-  t->current_status = STATUS_ALIVE;
-  t->load_success = false;
-  t->first_wait = true;
   #endif
 
   old_level = intr_disable ();

@@ -55,17 +55,17 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (user_program_name, PRI_DEFAULT, start_process, fn_copy2);
   palloc_free_page (fn_copy);
-  if (tid == TID_ERROR) {
+  if (tid == TID_ERROR)
     palloc_free_page (fn_copy2);
-  } else {
+  else{
     //disabling interrupts since dealing with global list of threads
     enum intr_level old_level = intr_disable();
     struct thread* curr = thread_current();
     //finding thread from id then adding it to child processes
     struct thread* new = find_thread_from_id(tid);
     ASSERT(new != NULL);
-    new->parent = curr;
     list_push_front(&curr->child_processes, &new->child_elem);
+    new->parent = curr;
     intr_set_level(old_level);
   } 
   return tid;
@@ -86,12 +86,6 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-
-  if (thread_current()->parent != NULL) {
-    thread_current()->load_success = true;
-  }
-
-  sema_up(&thread_current()->exec_sema);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -129,28 +123,14 @@ process_wait (tid_t child_tid)
   //get child process
   struct thread* child = find_child_from_id(curr, child_tid);
   //check that child exists and doesn't have child
-  // if(child == NULL || !list_empty(&child->child_processes))
-  //   return -1;
-
-  if (child->first_wait) {
-    child->first_wait = false;
-
-    //if both checks were good, we now just wait for the child to exit
-    //so pop it off our list of children and wait for its semaphore
-    
-    //list_remove(&child->child_elem);
-
-    if (child->current_status == STATUS_ALIVE) {
-      sema_down(&child->wait_sema);
-    }
-    
-    return child->exit_code;
-  }
+  if(child == NULL || !list_empty(&child->child_processes))
+    return -1;
   
-  // list_remove(&child->child_elem);
-  // sema_down(&child->wait_sema);
-  // return child->exit_code;
-  return -1;  
+  //if both checks were good, we now just wait for the child to exit
+  //so pop it off our list of children and wait for its semaphore
+  list_remove(&child->child_elem);
+  sema_down(&child->wait_child_sema);
+  return curr->child_exit_code;
 }
 
 /* Free the current process's resources. */
@@ -159,18 +139,6 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
-  if (cur->parent != NULL) {
-    if (cur->current_status == STATUS_ALIVE) {
-      cur->current_status = STATUS_KILLED;
-      cur->exit_code = -1;
-    }
-  }
-
-  //since exited process, allow parent to continue
-  sema_up(&thread_current()->wait_sema);
-
-  cur->parent = NULL;
   // int list_len = list_size(&cur->opened_files);
   // bool empty = list_empty(&cur->opened_files);
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
