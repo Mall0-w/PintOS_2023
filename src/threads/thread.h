@@ -107,6 +107,8 @@ struct thread
     struct list_elem child_elem;           /*elem used in list of child processes*/
 
     int exit_code;                           /* exit code for a process*/
+    struct thread* parent;
+    int child_exit_code;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

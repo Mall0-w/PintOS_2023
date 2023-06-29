@@ -550,6 +550,8 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&t->wait_child_sema, 0);
   list_init(&t->child_processes);
   t->exit_code = -1;
+  t->child_exit_code = -1;
+  t->parent = NULL;
   t->curr_fd = 3;
   list_init(&t->opened_files);
   #endif

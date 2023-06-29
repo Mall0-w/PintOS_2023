@@ -65,6 +65,7 @@ process_execute (const char *file_name)
     struct thread* new = find_thread_from_id(tid);
     ASSERT(new != NULL);
     list_push_front(&curr->child_processes, &new->child_elem);
+    new->parent = curr;
     intr_set_level(old_level);
   } 
   return tid;
@@ -129,7 +130,7 @@ process_wait (tid_t child_tid)
   //so pop it off our list of children and wait for its semaphore
   list_remove(&child->child_elem);
   sema_down(&child->wait_child_sema);
-  return child->exit_code;
+  return curr->child_exit_code;
 }
 
 /* Free the current process's resources. */
