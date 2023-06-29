@@ -151,16 +151,21 @@ int syscall_exit(const uint8_t* stack){
 }
 
 void proc_exit(int status){
-  struct thread* curr = thread_current();
-  curr->exit_code = status;
-  if(curr->parent != NULL)
-    curr->parent->child_exit_code = status;
+  struct thread* cur = thread_current();
+  // printf("%s: exit(%d)\n", cur->name, status);
+  cur->exit_code = status;
+  struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
+  child->exit_code = status;
+  if (status == -1) {
+    child->is_alive = false;
+  }
   thread_exit();
 }
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  tid_t tid;
+  struct thread* cur = thread_current();
+  tid_t pid;
   char* cmd_line;
   if(!copy_in(&cmd_line, stack, sizeof(char*)))
     return -1;
@@ -170,8 +175,13 @@ int exec(const uint8_t* stack){
     lock_release(&error_lock);
     return -1;
   }
-  tid = process_execute(cmd_line);
-  return tid;
+  pid = process_execute(cmd_line);
+  struct child_process *child = find_child_from_id(pid, &cur->child_processes);
+  sema_down(&child->t->exec_sema);
+  if (!child->load_success) {
+    return -1;
+  }
+  return pid;
 }
 
 /*Handler for SYS_WAIT*/
