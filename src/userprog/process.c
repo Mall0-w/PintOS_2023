@@ -69,6 +69,10 @@ process_execute (const char *file_name)
     struct child_process *child = create_child(new);
     list_push_back(&cur->child_processes, &child->child_elem);
     new->parent = cur;
+    sema_down(&child->t->exec_sema);
+    if (!child->load_success) {
+      return -1;
+    }
     intr_set_level(old_level);
   }
   return tid;

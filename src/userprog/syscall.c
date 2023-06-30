@@ -178,11 +178,6 @@ int exec(const uint8_t* stack){
     return -1;
   }
   pid = process_execute(cmd_line);
-  struct child_process *child = find_child_from_id(pid, &cur->child_processes);
-  sema_down(&child->t->exec_sema);
-  if (!child->load_success) {
-    return -1;
-  }
   return pid;
 }
 
