@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "devices/timer.h"
 #include "threads/fixed-point.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -323,8 +324,6 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
-  //since exited process, allow parent to continue
-  sema_up(&thread_current()->wait_child_sema);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -547,10 +546,11 @@ init_thread (struct thread *t, const char *name, int priority)
   } 
 
   #ifdef USERPROG
-  sema_init(&t->wait_child_sema, 0);
+  sema_init(&t->wait_sema, 0);
+  sema_init(&t->exec_sema, 0);
   list_init(&t->child_processes);
-  t->exit_code = -1;
   t->curr_fd = 3;
+  t->exit_code = -1;
   list_init(&t->opened_files);
   #endif
 
@@ -941,23 +941,37 @@ handle_mlfqs(int64_t ticks) {
   }
 }
 
-/*Function used to get child thread with tid id from t's list of child threads
-if no such thread exists, return NULL*/
-struct thread* find_child_from_id (struct thread* t, tid_t id){
-  //check if list is empty
-  if(list_empty(&t->child_processes))
-    return NULL;
-  //iterate throuh list looking for thread
-  struct thread* curr_thread;
+/**
+create and init new child
+retuen the created child
+*/
+struct child_process*
+create_child(struct thread *t)
+{
+    struct child_process* child = malloc(sizeof(struct child_process));
+    child -> pid = t->tid;
+    child -> is_alive = true;
+    child -> first_wait = true;
+    child -> load_success = false;
+    child -> t = t;
+    child -> exit_code = 0;
+}
+
+/**
+iterate on child_processes and return the child which have the tid
+*/
+struct child_process*
+find_child_from_id(tid_t tid, struct list *child_processes)
+{
   struct list_elem* e;
-  for (e = list_begin (&t->child_processes); 
-  e != list_end (&t->child_processes); e = list_next (e)){
-      //if find thread return
-      curr_thread = list_entry(e, struct thread, child_elem);
-      if(curr_thread->tid == id)
-        return curr_thread;
+  for (e = list_begin (child_processes); e != list_end (child_processes); e = list_next (e))
+  {
+    struct child_process *child = list_entry (e, struct child_process, child_elem);
+    if(child -> pid == tid)
+    {
+        return child;
     }
-  return NULL;
+  }
 }
 
 /*Function used to get thread with tid id from the list of all threads

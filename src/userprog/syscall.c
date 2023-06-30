@@ -151,32 +151,44 @@ int syscall_exit(const uint8_t* stack){
 }
 
 void proc_exit(int status){
-  struct thread* curr = thread_current();
-  curr->exit_code = status;
+  struct thread* cur = thread_current();
+  // printf("%s: exit(%d)\n", cur->name, status);
+  cur->exit_code = status;
+  struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
+  child->exit_code = status;
+  if (status == -1) {
+    child->is_alive = false;
+  }
   thread_exit();
 }
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  tid_t tid;
-  int argv[1];
-  get_args((uint8_t*)stack, 1, argv);
-  if(pagedir_get_page(thread_current()->pagedir, (void*)argv[0]) == NULL){
+  struct thread* cur = thread_current();
+  tid_t pid;
+  char* cmd_line;
+  if(!copy_in(&cmd_line, stack, sizeof(char*)))
+    return -1;
+  if(pagedir_get_page(thread_current()->pagedir, (void*)cmd_line) == NULL){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
-  char* cmd_line = argv[0];
-  tid = process_execute(cmd_line);
-  return tid;
+  pid = process_execute(cmd_line);
+  struct child_process *child = find_child_from_id(pid, &cur->child_processes);
+  sema_down(&child->t->exec_sema);
+  if (!child->load_success) {
+    return -1;
+  }
+  return pid;
 }
 
 /*Handler for SYS_WAIT*/
 int wait(const uint8_t* stack){
-  int argv[1];
-  get_args((uint8_t*)stack, 1, argv);
-  int pid = argv[0];
+  tid_t pid;
+  if(!copy_in(&pid, stack, sizeof(tid_t)))
+    return -1;
   int status = process_wait(pid);
   return status;
 }
@@ -313,10 +325,7 @@ int read(const uint8_t* stack){
   if(fd == STDOUT_FILENO){
     return -1;
   }else if(fd == STDIN_FILENO){
-    for(int i = 0; i < size; i++){
-      *((uint8_t*)buffer + i) = input_getc();
-    }
-    return (int) size;
+    return (int) input_getc();
   }
 
   //acquire lock, find file and read
