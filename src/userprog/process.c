@@ -35,7 +35,6 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   char *fn_copy2;
-  char *fn_copy2;
   char *user_program_name;
   char *remaining_args;
   tid_t tid;
