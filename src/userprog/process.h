@@ -16,4 +16,6 @@ void process_activate (void);
 
 struct process_file* find_file(struct thread* t, int fd);   /*Function used to find a file of given fd under thread t*/
 
+bool is_file_exe(struct file* f);
+
 #endif /* userprog/process.h */
