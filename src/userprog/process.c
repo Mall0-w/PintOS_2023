@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include <stdbool.h>
+#include "filesys/file.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
@@ -32,6 +34,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *fn_copy2;
   char *fn_copy2;
   char *user_program_name;
   char *remaining_args;
@@ -617,4 +620,22 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+/*Function used to determine a file f is an executable*/
+bool
+is_file_exe(struct file* f){
+  //just inverting the check used in load
+  struct Elf32_Ehdr ehdr;
+  off_t original_pos = f->pos;
+  file_seek(f, 0);
+  bool is_exe = !(file_read (f, &ehdr, sizeof ehdr) != sizeof ehdr
+      || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
+      || ehdr.e_type != 2
+      || ehdr.e_machine != 3
+      || ehdr.e_version != 1
+      || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
+      || ehdr.e_phnum > 1024);
+  file_seek(f, original_pos);
+  return is_exe;
 }
