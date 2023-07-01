@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include <stdbool.h>
+#include "filesys/file.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
@@ -57,17 +59,18 @@ process_execute (const char *file_name)
   palloc_free_page (fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy2);
-  else{
+  else {
     //disabling interrupts since dealing with global list of threads
     enum intr_level old_level = intr_disable();
-    struct thread* curr = thread_current();
+    struct thread* cur = thread_current();
     //finding thread from id then adding it to child processes
     struct thread* new = find_thread_from_id(tid);
     ASSERT(new != NULL);
-    list_push_front(&curr->child_processes, &new->child_elem);
-    new->parent = curr;
+    struct child_process *child = create_child(new);
+    list_push_back(&cur->child_processes, &child->child_elem);
+    new->parent = cur;
     intr_set_level(old_level);
-  } 
+  }
   return tid;
 }
 
@@ -79,6 +82,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  struct thread* cur = thread_current();
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -87,10 +91,17 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
+  if (cur->parent != NULL) {
+    struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
+    child->load_success = success;
+  }
+
+  sema_up(&cur->exec_sema);
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
-    thread_exit ();
+    thread_exit();
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -114,23 +125,17 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  // while(1){}
-  // return -1;
-  //check that current thread has children
-  struct thread* curr = thread_current();
-  if(list_empty(&curr->child_processes))
-    return -1;
-  //get child process
-  struct thread* child = find_child_from_id(curr, child_tid);
-  //check that child exists and doesn't have child
-  if(child == NULL || !list_empty(&child->child_processes))
-    return -1;
-  
-  //if both checks were good, we now just wait for the child to exit
-  //so pop it off our list of children and wait for its semaphore
-  list_remove(&child->child_elem);
-  sema_down(&child->wait_child_sema);
-  return curr->child_exit_code;
+  struct thread* cur = thread_current();
+  struct child_process *child = find_child_from_id(child_tid, &cur->child_processes);
+
+  if (child->first_wait) {
+    child->first_wait = false;
+    if (child->is_alive) {
+      sema_down(&(child->t->wait_sema)); 
+    }
+    return child->exit_code;
+  }
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -143,6 +148,20 @@ process_exit (void)
   // bool empty = list_empty(&cur->opened_files);
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
   /*call close on all of the process' files*/
+
+  if (cur->parent != NULL) {
+    struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
+    if (child->is_alive) {
+      child->is_alive = false;
+    }
+  }
+
+  //since exited process, allow parent to continue
+  sema_up(&cur->wait_sema);
+
+  free_children(&cur->child_processes);
+
+  cur->parent = NULL;
   
   while(!list_empty(&cur->opened_files)){
     struct list_elem* e = list_pop_front(&cur->opened_files);
@@ -172,6 +191,23 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+    }
+}
+
+/**
+free all the children in the child_list
+*/
+void
+free_children(struct list *child_list)
+{
+    struct list_elem* e1 = list_begin(child_list);
+    while(e1!=list_end(child_list))
+    {
+        struct list_elem* next = list_next(e1);
+        struct child_process* c = list_entry(e1, struct child_process, child_elem);
+        list_remove(e1);
+        free(c);
+        e1 = next;
     }
 }
 
@@ -583,4 +619,22 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+/*Function used to determine a file f is an executable*/
+bool
+is_file_exe(struct file* f){
+  //just inverting the check used in load
+  struct Elf32_Ehdr ehdr;
+  off_t original_pos = f->pos;
+  file_seek(f, 0);
+  bool is_exe = !(file_read (f, &ehdr, sizeof ehdr) != sizeof ehdr
+      || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
+      || ehdr.e_type != 2
+      || ehdr.e_machine != 3
+      || ehdr.e_version != 1
+      || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
+      || ehdr.e_phnum > 1024);
+  file_seek(f, original_pos);
+  return is_exe;
 }

@@ -113,16 +113,16 @@ get_args (uint8_t *stack, int argc, int *argv) {
 static void
 syscall_handler (struct intr_frame *f) 
 { 
-  unsigned interupt_number;
+  unsigned interrupt_number;
   
   //copy in interrupt number, exit if error occured or if stack is invalid
-  if(pagedir_get_page(thread_current()->pagedir, f->esp) == NULL || !copy_in(&interupt_number, f->esp, sizeof(interupt_number))){
+  if(pagedir_get_page(thread_current()->pagedir, f->esp) == NULL || !copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))){
     proc_exit(-1);
   }
   //if interrupt number is valid, call its function and grab return code
-  if(interupt_number < sizeof(handlers) / sizeof(handlers[0])){
+  if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
-    f->eax = handlers[interupt_number](f->esp + sizeof(unsigned));
+    f->eax = handlers[interrupt_number](f->esp + sizeof(unsigned));
     if(raised_error){
       lock_acquire(&error_lock);
       raised_error = false;
@@ -151,16 +151,21 @@ int syscall_exit(const uint8_t* stack){
 }
 
 void proc_exit(int status){
-  struct thread* curr = thread_current();
-  curr->exit_code = status;
-  if(curr->parent != NULL)
-    curr->parent->child_exit_code = status;
+  struct thread* cur = thread_current();
+  // printf("%s: exit(%d)\n", cur->name, status);
+  cur->exit_code = status;
+  struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
+  child->exit_code = status;
+  if (status == -1) {
+    child->is_alive = false;
+  }
   thread_exit();
 }
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(const uint8_t* stack){
-  tid_t tid;
+  struct thread* cur = thread_current();
+  tid_t pid;
   char* cmd_line;
   if(!copy_in(&cmd_line, stack, sizeof(char*)))
     return -1;
@@ -170,8 +175,13 @@ int exec(const uint8_t* stack){
     lock_release(&error_lock);
     return -1;
   }
-  tid = process_execute(cmd_line);
-  return tid;
+  pid = process_execute(cmd_line);
+  struct child_process *child = find_child_from_id(pid, &cur->child_processes);
+  sema_down(&child->t->exec_sema);
+  if (!child->load_success) {
+    return -1;
+  }
+  return pid;
 }
 
 /*Handler for SYS_WAIT*/
@@ -250,7 +260,11 @@ int open(const uint8_t* stack){
   if(f == NULL){
     return -1;
   }
-
+  bool is_exe = is_file_exe(f);
+  if(is_exe){
+    //deny writing if its an exe
+    file_deny_write(f);
+  }
   
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));
@@ -368,10 +382,22 @@ int write(const uint8_t* stack){
     lock_release(&file_lock);
     return -1;
   }
-  //write to file, then release lock
-  size = (int)file_write(f->file, buffer, size);
+
+  int write_size = 0;
+  if(is_file_exe(f->file)){
+    //if file is an executable, check if what we're writing will change the contents, if not then pretend to write
+    char read_buffer[size];
+    int read_size = file_read(f->file,read_buffer,size);
+    if(read_size == size && strcmp(read_buffer, buffer) == 0){
+      write_size = size;
+    }
+  }else{
+    //write to file, then release lock
+    write_size = (int)file_write(f->file, buffer, size);
+  }
+
   lock_release(&file_lock);
-  return size;
+  return write_size;
   
 }
 

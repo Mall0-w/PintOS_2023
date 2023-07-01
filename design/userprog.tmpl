@@ -36,9 +36,14 @@ Jahin Promit <jahin.promit@mail.utoronto.ca>
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+We implemented argument passing by passing the full command string to load, load breaks down the command line into the command and its argument.  After this, we iterate through the arguments in reverse order (starting from the end of the array and working our way to the front), in order to get the reverse order displayed in the handouts.  Overflowing the stack page is prevented through putting an arbitrary limit on the number of arguments that can be passed with a command, admittedly it's not the best way but it works for our puroposes.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
+strtok() uses an internal static pointer in a static buffer to indicate the position of next token. This implies that in the event of an interruption and the preempting of a thread, there is a chance that the content strtok() was referring to has been altered when the executing thread regains control of the CPU, resulting in inaccurate execution.
+
+To address this concern, strtok_r() serves as the reentrant variant of strtok(). It locally stores all its information or utilizes arguments provided by the caller, eliminating the risk of data being modified by other threads. Given the potential for thread switching in Pintos, it is important to use the reentrant version, strtok_r, to ensure the correctness of the code.
 
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
@@ -46,6 +51,8 @@ Jahin Promit <jahin.promit@mail.utoronto.ca>
 
                  SYSTEM CALLS
                  ============
+-   puts less strain on the kernel, allowing it to make better use of its time since it doesnt need to process the command.
+-   increased abstraction for user; shell parses input to make it readable instead of user having the ensure valid input.
 
 ---- DATA STRUCTURES ----
 
@@ -53,9 +60,38 @@ Jahin Promit <jahin.promit@mail.utoronto.ca>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct process_file{
+    int fd;                     /*File descriptor for process' file*/
+    struct file* file;          /*pointer to file for process*/
+    struct list_elem elem;      /*list elem used to keep track of opened files*/
+};
+
+struct child_process {
+   tid_t pid;                               /* process id for the child */
+   bool is_alive;                           /* boolean indicating if the child is still alive*/
+   bool load_success;                       /* boolean indicating if child has successfully loaded */
+   bool first_wait;                         /* boolean indicating if this is the first time wait has been called on the child */
+   int exit_code;                           /* exit code for a process*/
+   struct thread *t;                        /* thread corresponding to child process*/
+   struct list_elem child_elem;           /*elem used in list of child processes*/
+};
+
+struct thread {
+    int curr_fd;                     /* current file descriptor*/
+    struct list opened_files;             /* list of files opened by the thread*/
+
+    struct semaphore wait_sema;     /*semaphore used to wait on children to exit*/
+    struct semaphore exec_sema;     /*semaphore used to wait on children of process to load*/
+    struct list child_processes;          /*list of child processes*/
+    struct thread* parent;          /*parent thread of thread */
+    int exit_code;                  /*exit code of process*/
+}
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+file descriptors are essentially a secondary id to describe a file within a process, when a process opens a file, that  file gets a unique file descriptor within that process (for example two processes can have two files with fd 1 but a single process cannot have two files with fd 1).
 
 ---- ALGORITHMS ----
 
@@ -71,6 +107,7 @@ Jahin Promit <jahin.promit@mail.utoronto.ca>
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+When a thread is first created, it intalizes a semaphore with value 0 to represent it waiting on a child. when it has to wait for a child, it finds the child with the given idea, and decrements its semaphore with value 0, causing it to be blocked by that child.  when that child exits, it sema_ups on that semaphore unlocking its parent, and the parent then grabs the exit code from the child when it next runs.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -86,12 +123,18 @@ Jahin Promit <jahin.promit@mail.utoronto.ca>
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+Each thread has an inital exit value of -1 which is overwritten when a process exits properly.
+Because of this, when a loading a new executable fails, it defaults to returning -1 which the parent
+takes as its exist status.  Futhermore, each child process has a boolean indicating whether it successfully loaded.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -100,16 +143,23 @@ Jahin Promit <jahin.promit@mail.utoronto.ca>
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+when a process waits on another, it checks to see if this is the first time wait is called on the process and if the child is still alive.  If both are true, it uses a semaphore to wait on the child which the child releases when it exits.  This way P will wait on C before C exits, if its after C exits it doesnt wait, and C doesn't need to care about the state of P.  Any allocated resources are freed whenever a process exits, which all processes will do regardless.
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+We chose to go with the second method since code was already provided and since it we wanted the faster performance for managing user memory.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
+The biggest advantage is having a unique way to describe a file within a user process especially if that file is being modified.
+The biggest disadvantage however was the performance as in order to isolate the file to a process we had to find the file within the filesystem then iterate through all the process' files to find the file descriptor whenever it was needed.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+We did not change it, for all intents pid_t is the tid_t
 
                SURVEY QUESTIONS
                ================

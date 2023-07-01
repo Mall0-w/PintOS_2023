@@ -102,13 +102,11 @@ struct thread
     int curr_fd;                     /* current file descriptor*/
     struct list opened_files;             /* list of files opened by the thread*/
 
-    struct semaphore wait_child_sema;     /*semaphore used to wait on children*/
+    struct semaphore wait_sema;     /*semaphore used to wait on children*/
+    struct semaphore exec_sema;
     struct list child_processes;          /*list of child processes*/
-    struct list_elem child_elem;           /*elem used in list of child processes*/
-
-    int exit_code;                           /* exit code for a process*/
     struct thread* parent;
-    int child_exit_code;
+    int exit_code;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -117,6 +115,16 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  };
+
+  struct child_process {
+   tid_t pid;                               /* process id for the child */
+   bool is_alive;                           /* boolean indicating if the child is still alive*/
+   bool load_success;                       /* boolean indicating if child has successfully loaded */
+   bool first_wait;                         /* boolean indicating if this is the first time wait has been called on the child */
+   int exit_code;                           /* exit code for a process*/
+   struct thread *t;                        /* thread corresponding to child process*/
+   struct list_elem child_elem;           /*elem used in list of child processes*/
   };
 
 /* If false (default), use round-robin scheduler.
@@ -166,7 +174,9 @@ void handle_mlfqs(int64_t ticks);
 
 /*Function used to get child thread with tid id from t's list of child threads
 if no such thread exists, return NULL*/
-struct thread* find_child_from_id (struct thread* t, tid_t id);
+struct child_process* find_child_from_id(tid_t tid, struct list *mylist);
+
+struct child_process* create_child(struct thread *t);
 
 /*Function used to get thread with tid id from the list of all threads
 if no such thread exists, return NULL*/
