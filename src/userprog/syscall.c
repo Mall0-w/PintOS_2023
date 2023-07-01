@@ -83,12 +83,19 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   ASSERT (dst_ != NULL || size == 0);
   ASSERT (usrc_ != NULL || size == 0);
   
-  int curr;
+  struct thread* curr = thread_current();
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
   if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
     return false;
-  }  
+  }
+  // Checks if page exists to a mapped physical memory for each byte
+  for(int i = 0; i <= 3; i++){
+    if(pagedir_get_page(curr->pagedir, usrc + i) == NULL){
+      return false;
+    }
+  }
+
 
   for(; size > 0; size--, dst++, usrc++){
     int curr = get_user(usrc);
@@ -101,24 +108,25 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   return true;
 }
 
-void
-get_args (uint8_t *stack, int argc, int *argv) {
-  int *next_arg;
-  for (int i = 0; i < argc; i++) {
-    next_arg = stack + i * sizeof(int);
-    argv[i] = *next_arg;
-  }
-}
-
 static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interrupt_number;
   
-  //copy in interrupt number, exit if error occured or if stack is invalid
-  if(pagedir_get_page(thread_current()->pagedir, f->esp) == NULL || !copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))){
+  // Check if the 4 bytes is in user virtual address space and has an existing
+  // page associated with it, if all good put it in interrupt_number
+  for(int i = 0; i <= 3; i++){
+    if(!is_user_vaddr(f->esp + i)){
+      // Checks if page exists to a mapped physical memory
+      if(pagedir_get_page(thread_current()->pagedir, f->esp + i) == NULL){
+        proc_exit(-1);
+      }
+    }
+  }
+  if(!copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))) {
     proc_exit(-1);
   }
+
   //if interrupt number is valid, call its function and grab return code
   if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
@@ -152,7 +160,6 @@ int syscall_exit(const uint8_t* stack){
 
 void proc_exit(int status){
   struct thread* cur = thread_current();
-  // printf("%s: exit(%d)\n", cur->name, status);
   cur->exit_code = status;
   struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
   child->exit_code = status;
@@ -167,14 +174,22 @@ int exec(const uint8_t* stack){
   struct thread* cur = thread_current();
   tid_t pid;
   char* cmd_line;
-  if(!copy_in(&cmd_line, stack, sizeof(char*)))
-    return -1;
-  if(pagedir_get_page(thread_current()->pagedir, (void*)cmd_line) == NULL){
+  if(!copy_in(&cmd_line, stack, sizeof(char*))) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
+  // Checks if page exists to a mapped physical memory for every byte in cmd_line
+  for(int i = 0; i <= 3; i++){
+    if(pagedir_get_page(thread_current()->pagedir, cmd_line + i) == NULL){
+      lock_acquire(&error_lock);
+      raised_error = true;
+      lock_release(&error_lock);
+      return -1;
+    }
+  }
+
   pid = process_execute(cmd_line);
   struct child_process *child = find_child_from_id(pid, &cur->child_processes);
   sema_down(&child->t->exec_sema);
@@ -245,6 +260,7 @@ int open(const uint8_t* stack){
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
+
   
   //check for null filename or invalid ptr
   if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
@@ -319,7 +335,7 @@ int read(const uint8_t* stack){
     return -1;
   
   //check for invalid ptr first
-  if(!is_user_vaddr(buffer) || (thread_current()->pagedir,buffer) == NULL){
+  if(!is_user_vaddr(buffer) || pagedir_get_page(thread_current()->pagedir, buffer) == NULL){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
