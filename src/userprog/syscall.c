@@ -108,6 +108,20 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   return true;
 }
 
+bool valid_esp(void* ptr, int range){
+  struct thread* curr = thread_current();
+  for(int i = 0; i <= range; i++){
+    if(!is_user_vaddr(ptr + i)){
+      return false;
+    }
+    if(pagedir_get_page(curr->pagedir, ptr + i) == NULL){
+      return false;
+    }
+  }
+  return true;
+}
+
+
 static void
 syscall_handler (struct intr_frame *f) 
 { 
@@ -115,14 +129,9 @@ syscall_handler (struct intr_frame *f)
   
   // Check if the 4 bytes is in user virtual address space and has an existing
   // page associated with it, if all good put it in interrupt_number
-  for(int i = 0; i <= 3; i++){
-    if(!is_user_vaddr(f->esp + i)){
-      // Checks if page exists to a mapped physical memory
-      if(pagedir_get_page(thread_current()->pagedir, f->esp + i) == NULL){
-        proc_exit(-1);
-      }
-    }
-  }
+  if(!valid_esp(f->esp, 3))
+    proc_exit(-1);
+  
   if(!copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))) {
     proc_exit(-1);
   }
@@ -181,13 +190,11 @@ int exec(const uint8_t* stack){
     return -1;
   }
   // Checks if page exists to a mapped physical memory for every byte in cmd_line
-  for(int i = 0; i <= 3; i++){
-    if(pagedir_get_page(thread_current()->pagedir, cmd_line + i) == NULL){
-      lock_acquire(&error_lock);
-      raised_error = true;
-      lock_release(&error_lock);
-      return -1;
-    }
+  if(!valid_esp(cmd_line, 3)){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
   }
 
   pid = process_execute(cmd_line);
@@ -223,13 +230,12 @@ int create(const uint8_t* stack){
     return -1;
   
   //checking for null filename or invalid ptr
-  if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
+  if((int*) file_name == NULL || !valid_esp(file_name, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
-    
 
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
@@ -256,19 +262,28 @@ int remove(const uint8_t* stack){
 
 /*Handler for SYS_OPEn*/
 int open(const uint8_t* stack){
+  //printf("open\n");
   //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
 
-  
-  //check for null filename or invalid ptr
-  if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
+  // Checks if the file name goes into unmapped memory
+  if((int*) file_name == NULL || !valid_esp(file_name, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
+  
+
+  //check for null filename or invalid ptr
+  // if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
+  //   lock_acquire(&error_lock);
+  //   raised_error = true;
+  //   lock_release(&error_lock);
+  //   return -1;
+  // }
   
   //open file
   lock_acquire(&file_lock);
@@ -284,6 +299,11 @@ int open(const uint8_t* stack){
   
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));
+  if(new_file == NULL){
+    file_close(f);
+    lock_release(&file_lock);
+    return -1;
+  }
   struct thread* t = thread_current();
   //asign its fd, its file, and increment thread's fd counter
   new_file->fd = t->curr_fd+1;
@@ -441,7 +461,6 @@ int seek(const uint8_t* stack){
   //call seek then release lock
   file_seek(f->file, position);
   lock_release(&file_lock);
-
   return 1;
 }
 

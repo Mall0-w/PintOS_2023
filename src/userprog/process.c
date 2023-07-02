@@ -168,14 +168,7 @@ process_exit (void)
     struct process_file* f = list_entry(e, struct process_file, elem);
     close_proc_file(f, true);
   }
-  // if(!list_empty(&cur->opened_files)){
-  //   for(struct list_elem* curr = list_front(&cur->opened_files);
-  //   curr != NULL; curr=curr->next){
-  //     struct process_file* f = list_entry(curr, struct process_file, elem);
-  //     close_proc_file(f, true);
-  //   }
-  // }
-
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
