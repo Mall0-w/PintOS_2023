@@ -126,6 +126,7 @@ with fd 1 but a single process cannot have two files with fd 1).
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
 When a thread is first created, it intalizes a semaphore with value 0 to 
 represent it waiting on a child. when it has to wait for a child, it finds 
 the child with the given idea, and decrements its semaphore with value 0, 
@@ -147,6 +148,9 @@ code from the child when it next runs.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+We decided that the best way to handle all this error checking without obscuring the primary function was to include the error checking within the helper functions of the code, checking for errors after calling said helpers.  For example copy_in copies data from the stack passed to the system call to a variable however, if it detects that we are copying from is not a valid user_address it stops copying and returns false to indicate an error has occured.  We can then check the output of copy_in to see if we need to raise an error or not.  For cases where we have to terminate the thread, we also introduced a variable called raised_error which is shared between the handler and all the syscalls.  If, for example, the address for our buffer in write isn't valid, we set raised_error to true and return.  The handler then notices that raised_error has been set to true and exits the process with a -1.  In addition to this, we tried to ensure that our syscalls and other functions were well commented in order to try to minimize the amount of confusion these error checks could cause.
+
+In terms of making sure the appropriate resources are freed, we ensure that whenever a process exits (which all processes will do), they check for their appropriate resources and free them.  For example, when process_exit() is eventually called in the thread/process exiting process, the kernel will iterate through all the process' files and both closes them and frees the process_file struct for that file which was malloced earlier.  We determined that accounting for all temporary resources in the guarenteed end state of the program would both be the most practical and effcient way of dealing with all of it.
 
 
 ---- SYNCHRONIZATION ----
@@ -186,6 +190,7 @@ since it we wanted the faster performance for managing user memory.
 
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
+
 The biggest advantage is having a unique way to describe a file within a user 
 process especially if that file is being modified.
 
@@ -196,6 +201,7 @@ it was needed.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
 We did not change it, for all intents pid_t is the tid_t
 
                SURVEY QUESTIONS

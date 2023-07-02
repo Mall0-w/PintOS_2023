@@ -14,9 +14,10 @@
 #include <string.h>
 #include "devices/input.h"
 #include "userprog/pagedir.h"
+#include "devices/shutdown.h"
 
 /*Mapping each syscall to their respective function*/
-static int (*handlers[])(const uint8_t* stack) = {
+static int (*handlers[])(uint8_t* stack) = {
   [SYS_HALT]halt,
   [SYS_EXIT]syscall_exit,
   [SYS_EXEC]exec,
@@ -66,17 +67,6 @@ get_user (const uint8_t *uaddr)
   return result;
 }
  
-/* Writes BYTE to user address UDST.
-   UDST must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
-static bool
-put_user (uint8_t *udst, uint8_t byte)
-{
-  int error_code;
-  asm ("movl $1f, %0; movb %b2, %1; 1:"
-       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-  return error_code != -1;
-}
 
 /*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
 bool copy_in (void* dst_, const void* usrc_, size_t size){
@@ -108,6 +98,8 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   return true;
 }
 
+/*Function used to determine if a pointer and its following range btres 
+are valid addresses for syscalls*/
 bool valid_esp(void* ptr, int range){
   struct thread* curr = thread_current();
   for(int i = 0; i <= range; i++){
@@ -132,9 +124,10 @@ syscall_handler (struct intr_frame *f)
   
   // Check if the 4 bytes is in user virtual address space and has an existing
   // page associated with it, if all good put it in interrupt_number
-  if(!valid_esp(f->esp, 3))
+  if(!valid_esp((void*) f->esp, 3))
     proc_exit(-1);
   
+  //copy in the interrupt number from the stack
   if(!copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))) {
     proc_exit(-1);
   }
@@ -143,6 +136,7 @@ syscall_handler (struct intr_frame *f)
   if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
     f->eax = handlers[interrupt_number](f->esp + sizeof(unsigned));
+    //if an important error occured, resest the flag and exit
     if(raised_error){
       lock_acquire(&error_lock);
       raised_error = false;
@@ -157,12 +151,12 @@ syscall_handler (struct intr_frame *f)
 }
 
 /*handler for SYS_HALT*/
-int halt (const uint8_t* stack){
+int halt (uint8_t* stack UNUSED){
   shutdown_power_off();
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
-int syscall_exit(const uint8_t* stack){
+int syscall_exit(uint8_t* stack){
   int status;
   if(!copy_in(&status, stack, sizeof(int)))
     status = -1;
@@ -182,7 +176,7 @@ void proc_exit(int status){
 }
 
 /*HANLDER FOR SYS_EXEC*/
-int exec(const uint8_t* stack){
+int exec(uint8_t* stack){
   struct thread* cur = thread_current();
   tid_t pid;
   char* cmd_line;
@@ -193,7 +187,7 @@ int exec(const uint8_t* stack){
     return -1;
   }
   // Checks if page exists to a mapped physical memory for every byte in cmd_line
-  if(!valid_esp(cmd_line, 3)){
+  if(!valid_esp((void*)cmd_line, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -210,7 +204,7 @@ int exec(const uint8_t* stack){
 }
 
 /*Handler for SYS_WAIT*/
-int wait(const uint8_t* stack){
+int wait(uint8_t* stack){
   tid_t pid;
   if(!copy_in(&pid, stack, sizeof(tid_t)))
     return -1;
@@ -219,7 +213,7 @@ int wait(const uint8_t* stack){
 }
 
 /*handler for SYS_CREATE*/
-int create(const uint8_t* stack){
+int create(uint8_t* stack){
   //get stack args
   const char* file_name;
   unsigned inital_size;
@@ -233,7 +227,7 @@ int create(const uint8_t* stack){
     return -1;
   
   //checking for null filename or invalid ptr
-  if((int*) file_name == NULL || !valid_esp(file_name, 0)) {
+  if((int*) file_name == NULL || !valid_esp((void*)file_name, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -249,7 +243,7 @@ int create(const uint8_t* stack){
 }
 
 /*Handler for SYS_REMOVE*/
-int remove(const uint8_t* stack){
+int remove(uint8_t* stack){
   //get the file name
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
@@ -264,7 +258,7 @@ int remove(const uint8_t* stack){
 }
 
 /*Handler for SYS_OPEn*/
-int open(const uint8_t* stack){
+int open(uint8_t* stack){
   //printf("open\n");
   //copy filename from stack
   char* file_name;
@@ -272,7 +266,7 @@ int open(const uint8_t* stack){
     return -1;
 
   // Checks if the file name goes into unmapped memory
-  if((int*) file_name == NULL || !valid_esp(file_name, 3)){
+  if((int*) file_name == NULL || !valid_esp((void*)file_name, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -321,7 +315,7 @@ int open(const uint8_t* stack){
 }
 
 /*Handler for SYS_FILESIZE*/
-int filesize(const uint8_t* stack){
+int filesize(uint8_t* stack){
   //copy in fd
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
@@ -341,7 +335,7 @@ int filesize(const uint8_t* stack){
 }
 
 /*Handler for SYS_READ*/
-int read(const uint8_t* stack){
+int read(uint8_t* stack){
   int fd;
   void* buffer;
   unsigned size;
@@ -357,7 +351,7 @@ int read(const uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
 
-  if(!valid_esp(buffer, 0)) {
+  if(!valid_esp((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -383,7 +377,7 @@ int read(const uint8_t* stack){
 }
 
 /*Handler for SYS_WRITE*/
-int write(const uint8_t* stack){
+int write(uint8_t* stack){
   uint8_t* curr_address = stack;
   int fd;
   char* buffer;
@@ -401,7 +395,7 @@ int write(const uint8_t* stack){
     return -1;
 
   // Checks if the buffer goes into unmapped memory
-  if(!valid_esp(buffer, 0)) {
+  if(!valid_esp((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -441,7 +435,7 @@ int write(const uint8_t* stack){
 }
 
 /*Handler for SYS_SEEK*/
-int seek(const uint8_t* stack){
+int seek(uint8_t* stack){
   //copy in args
   int fd;
   unsigned position;
@@ -468,7 +462,7 @@ int seek(const uint8_t* stack){
 }
 
 /*Hanlder for SYS_TELL*/
-int tell(const uint8_t* stack){
+int tell(uint8_t* stack){
   //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
@@ -488,7 +482,7 @@ int tell(const uint8_t* stack){
 }
 
 //Handler for SYS_CLOSE
-int close(const uint8_t* stack){
+int close(uint8_t* stack){
   //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))

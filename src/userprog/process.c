@@ -20,6 +20,7 @@
 #include "userprog/syscall.h"
 #include <stdbool.h>
 #include "filesys/file.h"
+#include "threads/malloc.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
