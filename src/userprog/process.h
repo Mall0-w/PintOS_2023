@@ -16,6 +16,8 @@ void process_activate (void);
 
 struct process_file* find_file(struct thread* t, int fd);   /*Function used to find a file of given fd under thread t*/
 
-bool is_file_exe(struct file* f);
+bool is_file_exe(struct file* f);       /*Function used to determine if file f is an executable file*/
+
+void free_children(struct list *child_list); /*free all the children in the current thread's child_list*/
 
 #endif /* userprog/process.h */
