@@ -86,7 +86,7 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   struct thread* curr = thread_current();
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
-  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
+  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size) || usrc == NULL){
     return false;
   }
   // Checks if page exists to a mapped physical memory for each byte
@@ -111,7 +111,10 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
 bool valid_esp(void* ptr, int range){
   struct thread* curr = thread_current();
   for(int i = 0; i <= range; i++){
-    if(!is_user_vaddr(ptr + i)){
+    if(ptr == NULL) {
+      printf("segfault\n");
+    }
+    if(!is_user_vaddr(ptr + i) || ptr == NULL){
       return false;
     }
     if(pagedir_get_page(curr->pagedir, ptr + i) == NULL){
@@ -353,9 +356,8 @@ int read(const uint8_t* stack){
   curr_pos += sizeof(void*);
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
-  
-  //check for invalid ptr first
-  if(!is_user_vaddr(buffer) || pagedir_get_page(thread_current()->pagedir, buffer) == NULL){
+
+  if(!valid_esp(buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -397,14 +399,15 @@ int write(const uint8_t* stack){
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
-  
-  //checking for invalid ptr
-  if(pagedir_get_page(thread_current()->pagedir, buffer) == NULL){
+
+  // Checks if the buffer goes into unmapped memory
+  if(!valid_esp(buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
+  
 
   //if to stdout, just put to the buffer
   if(fd == STDOUT_FILENO){
