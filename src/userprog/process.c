@@ -129,6 +129,9 @@ process_wait (tid_t child_tid)
   struct thread* cur = thread_current();
   struct child_process *child = find_child_from_id(child_tid, &cur->child_processes);
 
+  if(child == NULL)
+    return -1;
+
   if (child->first_wait) {
     child->first_wait = false;
     if (child->is_alive) {
@@ -152,7 +155,7 @@ process_exit (void)
 
   if (cur->parent != NULL) {
     struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
-    if (child->is_alive) {
+    if (child != NULL && child->is_alive) {
       child->is_alive = false;
     }
   }
