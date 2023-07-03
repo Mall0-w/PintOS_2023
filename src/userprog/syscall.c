@@ -90,7 +90,6 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   for(; size > 0; size--, dst++, usrc++){
     int curr = get_user(usrc);
     if(curr == -1){
-      printf("segfault\n");
       return false;
     }
     *dst = curr;
@@ -104,7 +103,7 @@ bool valid_esp(void* ptr, int range){
   struct thread* curr = thread_current();
   for(int i = 0; i <= range; i++){
     if(ptr == NULL) {
-      printf("segfault\n");
+      return false;
     }
     if(!is_user_vaddr(ptr + i) || ptr == NULL){
       return false;
@@ -248,8 +247,6 @@ int remove(uint8_t* stack){
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
     return false;
-  // if(!is_user_vaddr(file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
-  //   return -1;
   //acquire lock, remove then release
   lock_acquire(&file_lock);
   bool success = filesys_remove(file_name);
@@ -259,7 +256,6 @@ int remove(uint8_t* stack){
 
 /*Handler for SYS_OPEn*/
 int open(uint8_t* stack){
-  //printf("open\n");
   //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
@@ -272,15 +268,6 @@ int open(uint8_t* stack){
     lock_release(&error_lock);
     return -1;
   }
-  
-
-  //check for null filename or invalid ptr
-  // if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
-  //   lock_acquire(&error_lock);
-  //   raised_error = true;
-  //   lock_release(&error_lock);
-  //   return -1;
-  // }
   
   //open file
   lock_acquire(&file_lock);
@@ -418,7 +405,8 @@ int write(uint8_t* stack){
 
   int write_size = 0;
   if(is_file_exe(f->file)){
-    //if file is an executable, check if what we're writing will change the contents, if not then pretend to write
+    //if file is an executable, check if what we're writing will change 
+    // the contents, if not then pretend to write
     char read_buffer[size];
     int read_size = file_read(f->file,read_buffer,size);
     if(read_size == size && strcmp(read_buffer, buffer) == 0){

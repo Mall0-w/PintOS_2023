@@ -314,7 +314,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int argc = 0;
 
   /* go through all cli arguments, parsing using strotk_r*/
-  for(curr_arg = strtok_r((char*) file_name, " ", &remaining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remaining_args)){
+  for(curr_arg = strtok_r((char*) file_name, " ", &remaining_args); 
+      curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remaining_args)){
     argv[argc] = curr_arg;
     argc++;
   }
