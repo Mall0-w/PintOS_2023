@@ -948,13 +948,14 @@ retuen the created child
 struct child_process*
 create_child(struct thread *t)
 {
-    struct child_process* child = malloc(sizeof(struct child_process));
-    child -> pid = t->tid;
-    child -> is_alive = true;
-    child -> first_wait = true;
-    child -> load_success = false;
-    child -> t = t;
-    child -> exit_code = 0;
+  struct child_process* child = malloc(sizeof(struct child_process));
+  child -> pid = t->tid;
+  child -> is_alive = true;
+  child -> first_wait = true;
+  child -> load_success = false;
+  child -> t = t;
+  child -> exit_code = 0;
+  return child;
 }
 
 /**
@@ -972,6 +973,7 @@ find_child_from_id(tid_t tid, struct list *child_processes)
         return child;
     }
   }
+  return NULL;
 }
 
 /*Function used to get thread with tid id from the list of all threads

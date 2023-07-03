@@ -118,12 +118,12 @@ struct thread
   };
 
   struct child_process {
-   tid_t pid;
-   bool is_alive;
-   bool load_success;
-   bool first_wait;
+   tid_t pid;                               /* process id for the child */
+   bool is_alive;                           /* boolean indicating if the child is still alive*/
+   bool load_success;                       /* boolean indicating if child has successfully loaded */
+   bool first_wait;                         /* boolean indicating if this is the first time wait has been called on the child */
    int exit_code;                           /* exit code for a process*/
-   struct thread *t;
+   struct thread *t;                        /* thread corresponding to child process*/
    struct list_elem child_elem;           /*elem used in list of child processes*/
   };
 

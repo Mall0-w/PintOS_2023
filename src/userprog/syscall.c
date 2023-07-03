@@ -14,11 +14,10 @@
 #include <string.h>
 #include "devices/input.h"
 #include "userprog/pagedir.h"
-#include "devices/input.h"
-#include "userprog/pagedir.h"
+#include "devices/shutdown.h"
 
 /*Mapping each syscall to their respective function*/
-static int (*handlers[])(const uint8_t* stack) = {
+static int (*handlers[])(uint8_t* stack) = {
   [SYS_HALT]halt,
   [SYS_EXIT]syscall_exit,
   [SYS_EXEC]exec,
@@ -68,34 +67,29 @@ get_user (const uint8_t *uaddr)
   return result;
 }
  
-/* Writes BYTE to user address UDST.
-   UDST must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
-static bool
-put_user (uint8_t *udst, uint8_t byte)
-{
-  int error_code;
-  asm ("movl $1f, %0; movb %b2, %1; 1:"
-       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-  return error_code != -1;
-}
 
 /*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
 bool copy_in (void* dst_, const void* usrc_, size_t size){
   ASSERT (dst_ != NULL || size == 0);
   ASSERT (usrc_ != NULL || size == 0);
   
-  int curr;
+  struct thread* curr = thread_current();
   uint8_t* dst = dst_;
   const uint8_t* usrc = usrc_;
-  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size)){
+  if(!is_user_vaddr(usrc) || !is_user_vaddr(usrc + size) || usrc == NULL){
     return false;
-  }  
+  }
+  // Checks if page exists to a mapped physical memory for each byte
+  for(int i = 0; i <= 3; i++){
+    if(pagedir_get_page(curr->pagedir, usrc + i) == NULL){
+      return false;
+    }
+  }
+
 
   for(; size > 0; size--, dst++, usrc++){
     int curr = get_user(usrc);
     if(curr == -1){
-      printf("segfault\n");
       return false;
     }
     *dst = curr;
@@ -103,28 +97,45 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   return true;
 }
 
-void
-get_args (uint8_t *stack, int argc, int *argv) {
-  int *next_arg;
-  for (int i = 0; i < argc; i++) {
-    next_arg = stack + i * sizeof(int);
-    argv[i] = *next_arg;
+/*Function used to determine if a pointer and its following range btres 
+are valid addresses for syscalls*/
+bool valid_esp(void* ptr, int range){
+  struct thread* curr = thread_current();
+  for(int i = 0; i <= range; i++){
+    if(ptr == NULL) {
+      return false;
+    }
+    if(!is_user_vaddr(ptr + i) || ptr == NULL){
+      return false;
+    }
+    if(pagedir_get_page(curr->pagedir, ptr + i) == NULL){
+      return false;
+    }
   }
+  return true;
 }
+
 
 static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interrupt_number;
   
-  //copy in interrupt number, exit if error occured or if stack is invalid
-  if(pagedir_get_page(thread_current()->pagedir, f->esp) == NULL || !copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))){
+  // Check if the 4 bytes is in user virtual address space and has an existing
+  // page associated with it, if all good put it in interrupt_number
+  if(!valid_esp((void*) f->esp, 3))
+    proc_exit(-1);
+  
+  //copy in the interrupt number from the stack
+  if(!copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))) {
     proc_exit(-1);
   }
+
   //if interrupt number is valid, call its function and grab return code
   if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
     f->eax = handlers[interrupt_number](f->esp + sizeof(unsigned));
+    //if an important error occured, resest the flag and exit
     if(raised_error){
       lock_acquire(&error_lock);
       raised_error = false;
@@ -139,12 +150,12 @@ syscall_handler (struct intr_frame *f)
 }
 
 /*handler for SYS_HALT*/
-int halt (const uint8_t* stack){
+int halt (uint8_t* stack UNUSED){
   shutdown_power_off();
   return -1;
 }
 /*HANDLER FOR SYS_EXIT*/
-int syscall_exit(const uint8_t* stack){
+int syscall_exit(uint8_t* stack){
   int status;
   if(!copy_in(&status, stack, sizeof(int)))
     status = -1;
@@ -154,7 +165,6 @@ int syscall_exit(const uint8_t* stack){
 
 void proc_exit(int status){
   struct thread* cur = thread_current();
-  // printf("%s: exit(%d)\n", cur->name, status);
   cur->exit_code = status;
   struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
   child->exit_code = status;
@@ -165,24 +175,35 @@ void proc_exit(int status){
 }
 
 /*HANLDER FOR SYS_EXEC*/
-int exec(const uint8_t* stack){
+int exec(uint8_t* stack){
   struct thread* cur = thread_current();
   tid_t pid;
   char* cmd_line;
-  if(!copy_in(&cmd_line, stack, sizeof(char*)))
-    return -1;
-  if(pagedir_get_page(thread_current()->pagedir, (void*)cmd_line) == NULL){
+  if(!copy_in(&cmd_line, stack, sizeof(char*))) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
+  // Checks if page exists to a mapped physical memory for every byte in cmd_line
+  if(!valid_esp((void*)cmd_line, 3)){
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
+
   pid = process_execute(cmd_line);
+  struct child_process *child = find_child_from_id(pid, &cur->child_processes);
+  sema_down(&child->t->exec_sema);
+  if (!child->load_success) {
+    return -1;
+  }
   return pid;
 }
 
 /*Handler for SYS_WAIT*/
-int wait(const uint8_t* stack){
+int wait(uint8_t* stack){
   tid_t pid;
   if(!copy_in(&pid, stack, sizeof(tid_t)))
     return -1;
@@ -191,7 +212,7 @@ int wait(const uint8_t* stack){
 }
 
 /*handler for SYS_CREATE*/
-int create(const uint8_t* stack){
+int create(uint8_t* stack){
   //get stack args
   const char* file_name;
   unsigned inital_size;
@@ -205,13 +226,12 @@ int create(const uint8_t* stack){
     return -1;
   
   //checking for null filename or invalid ptr
-  if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
+  if((int*) file_name == NULL || !valid_esp((void*)file_name, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
-    
 
   //acquire lock and call filesys_create
   lock_acquire(&file_lock);
@@ -222,13 +242,11 @@ int create(const uint8_t* stack){
 }
 
 /*Handler for SYS_REMOVE*/
-int remove(const uint8_t* stack){
+int remove(uint8_t* stack){
   //get the file name
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
     return false;
-  // if(!is_user_vaddr(file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
-  //   return -1;
   //acquire lock, remove then release
   lock_acquire(&file_lock);
   bool success = filesys_remove(file_name);
@@ -237,14 +255,14 @@ int remove(const uint8_t* stack){
 }
 
 /*Handler for SYS_OPEn*/
-int open(const uint8_t* stack){
+int open(uint8_t* stack){
   //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
-  
-  //check for null filename or invalid ptr
-  if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
+
+  // Checks if the file name goes into unmapped memory
+  if((int*) file_name == NULL || !valid_esp((void*)file_name, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -265,6 +283,11 @@ int open(const uint8_t* stack){
   
   //allocate memeory for a fd for the file
   struct process_file* new_file = malloc(sizeof(struct process_file));
+  if(new_file == NULL){
+    file_close(f);
+    lock_release(&file_lock);
+    return -1;
+  }
   struct thread* t = thread_current();
   //asign its fd, its file, and increment thread's fd counter
   new_file->fd = t->curr_fd+1;
@@ -279,7 +302,7 @@ int open(const uint8_t* stack){
 }
 
 /*Handler for SYS_FILESIZE*/
-int filesize(const uint8_t* stack){
+int filesize(uint8_t* stack){
   //copy in fd
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
@@ -299,7 +322,7 @@ int filesize(const uint8_t* stack){
 }
 
 /*Handler for SYS_READ*/
-int read(const uint8_t* stack){
+int read(uint8_t* stack){
   int fd;
   void* buffer;
   unsigned size;
@@ -314,9 +337,8 @@ int read(const uint8_t* stack){
   curr_pos += sizeof(void*);
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
-  
-  //check for invalid ptr first
-  if(!is_user_vaddr(buffer) || (thread_current()->pagedir,buffer) == NULL){
+
+  if(!valid_esp((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -342,7 +364,7 @@ int read(const uint8_t* stack){
 }
 
 /*Handler for SYS_WRITE*/
-int write(const uint8_t* stack){
+int write(uint8_t* stack){
   uint8_t* curr_address = stack;
   int fd;
   char* buffer;
@@ -358,14 +380,15 @@ int write(const uint8_t* stack){
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
-  
-  //checking for invalid ptr
-  if(pagedir_get_page(thread_current()->pagedir, buffer) == NULL){
+
+  // Checks if the buffer goes into unmapped memory
+  if(!valid_esp((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
+  
 
   //if to stdout, just put to the buffer
   if(fd == STDOUT_FILENO){
@@ -382,7 +405,8 @@ int write(const uint8_t* stack){
 
   int write_size = 0;
   if(is_file_exe(f->file)){
-    //if file is an executable, check if what we're writing will change the contents, if not then pretend to write
+    //if file is an executable, check if what we're writing will change 
+    // the contents, if not then pretend to write
     char read_buffer[size];
     int read_size = file_read(f->file,read_buffer,size);
     if(read_size == size && strcmp(read_buffer, buffer) == 0){
@@ -399,7 +423,7 @@ int write(const uint8_t* stack){
 }
 
 /*Handler for SYS_SEEK*/
-int seek(const uint8_t* stack){
+int seek(uint8_t* stack){
   //copy in args
   int fd;
   unsigned position;
@@ -422,12 +446,11 @@ int seek(const uint8_t* stack){
   //call seek then release lock
   file_seek(f->file, position);
   lock_release(&file_lock);
-
   return 1;
 }
 
 /*Hanlder for SYS_TELL*/
-int tell(const uint8_t* stack){
+int tell(uint8_t* stack){
   //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))
@@ -447,7 +470,7 @@ int tell(const uint8_t* stack){
 }
 
 //Handler for SYS_CLOSE
-int close(const uint8_t* stack){
+int close(uint8_t* stack){
   //copy in args
   int fd;
   if(!copy_in(&fd, stack, sizeof(int)))

@@ -20,6 +20,7 @@
 #include "userprog/syscall.h"
 #include <stdbool.h>
 #include "filesys/file.h"
+#include "threads/malloc.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
@@ -69,10 +70,6 @@ process_execute (const char *file_name)
     struct child_process *child = create_child(new);
     list_push_back(&cur->child_processes, &child->child_elem);
     new->parent = cur;
-    sema_down(&child->t->exec_sema);
-    if (!child->load_success) {
-      return -1;
-    }
     intr_set_level(old_level);
   }
   return tid;
@@ -132,6 +129,9 @@ process_wait (tid_t child_tid)
   struct thread* cur = thread_current();
   struct child_process *child = find_child_from_id(child_tid, &cur->child_processes);
 
+  if(child == NULL)
+    return -1;
+
   if (child->first_wait) {
     child->first_wait = false;
     if (child->is_alive) {
@@ -155,11 +155,10 @@ process_exit (void)
 
   if (cur->parent != NULL) {
     struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
-    if (child->is_alive) {
+    if (child != NULL && child->is_alive) {
       child->is_alive = false;
     }
   }
-
   //since exited process, allow parent to continue
   sema_up(&cur->wait_sema);
 
@@ -172,14 +171,7 @@ process_exit (void)
     struct process_file* f = list_entry(e, struct process_file, elem);
     close_proc_file(f, true);
   }
-  // if(!list_empty(&cur->opened_files)){
-  //   for(struct list_elem* curr = list_front(&cur->opened_files);
-  //   curr != NULL; curr=curr->next){
-  //     struct process_file* f = list_entry(curr, struct process_file, elem);
-  //     close_proc_file(f, true);
-  //   }
-  // }
-
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -321,7 +313,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int argc = 0;
 
   /* go through all cli arguments, parsing using strotk_r*/
-  for(curr_arg = strtok_r((char*) file_name, " ", &remaining_args); curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remaining_args)){
+  for(curr_arg = strtok_r((char*) file_name, " ", &remaining_args); 
+      curr_arg != NULL; curr_arg = strtok_r(NULL, " ", &remaining_args)){
     argv[argc] = curr_arg;
     argc++;
   }
