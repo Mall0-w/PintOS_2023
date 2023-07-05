@@ -28,7 +28,7 @@ void close_proc_file(struct process_file* f, bool release_lock);
 
 void proc_exit(int status);  /*Function used to exit process with statuscode status*/
 
-bool valid_esp(void *ptr, int range); /*Function used to check if a stack pointer is valid*/
+bool valid_ptr(void *ptr, int range); /*Function used to check if a stack pointer is valid*/
 
 
 #endif /* userprog/syscall.h */

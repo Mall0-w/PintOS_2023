@@ -68,7 +68,8 @@ get_user (const uint8_t *uaddr)
 }
  
 
-/*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
+/*copy data of size size to dst_ from usrc_.  
+return false if an error occured, otherwise true*/
 bool copy_in (void* dst_, const void* usrc_, size_t size){
   ASSERT (dst_ != NULL || size == 0);
   ASSERT (usrc_ != NULL || size == 0);
@@ -90,7 +91,6 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
   for(; size > 0; size--, dst++, usrc++){
     int curr = get_user(usrc);
     if(curr == -1){
-      printf("segfault\n");
       return false;
     }
     *dst = curr;
@@ -100,11 +100,11 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
 
 /*Function used to determine if a pointer and its following range btres 
 are valid addresses for syscalls*/
-bool valid_esp(void* ptr, int range){
+bool valid_ptr(void* ptr, int range){
   struct thread* curr = thread_current();
   for(int i = 0; i <= range; i++){
     if(ptr == NULL) {
-      printf("segfault\n");
+      return false;
     }
     if(!is_user_vaddr(ptr + i) || ptr == NULL){
       return false;
@@ -124,7 +124,7 @@ syscall_handler (struct intr_frame *f)
   
   // Check if the 4 bytes is in user virtual address space and has an existing
   // page associated with it, if all good put it in interrupt_number
-  if(!valid_esp((void*) f->esp, 3))
+  if(!valid_ptr((void*) f->esp, 3))
     proc_exit(-1);
   
   //copy in the interrupt number from the stack
@@ -167,7 +167,8 @@ int syscall_exit(uint8_t* stack){
 void proc_exit(int status){
   struct thread* cur = thread_current();
   cur->exit_code = status;
-  struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
+  struct child_process *child = find_child_from_id(cur->tid, 
+                                &cur->parent->child_processes);
   child->exit_code = status;
   if (status == -1) {
     child->is_alive = false;
@@ -186,8 +187,9 @@ int exec(uint8_t* stack){
     lock_release(&error_lock);
     return -1;
   }
-  // Checks if page exists to a mapped physical memory for every byte in cmd_line
-  if(!valid_esp((void*)cmd_line, 3)){
+  // Checks if page exists to a mapped physical memory 
+  // for every byte in cmd_line
+  if(!valid_ptr((void*)cmd_line, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -227,7 +229,7 @@ int create(uint8_t* stack){
     return -1;
   
   //checking for null filename or invalid ptr
-  if((int*) file_name == NULL || !valid_esp((void*)file_name, 0)) {
+  if((int*) file_name == NULL || !valid_ptr((void*)file_name, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -248,8 +250,6 @@ int remove(uint8_t* stack){
   const char* file_name;
   if(!copy_in(&file_name, stack, sizeof(char*)))
     return false;
-  // if(!is_user_vaddr(file_name) || file_name == NULL || strnlen(file_name, 128) == 0)
-  //   return -1;
   //acquire lock, remove then release
   lock_acquire(&file_lock);
   bool success = filesys_remove(file_name);
@@ -259,28 +259,18 @@ int remove(uint8_t* stack){
 
 /*Handler for SYS_OPEn*/
 int open(uint8_t* stack){
-  //printf("open\n");
   //copy filename from stack
   char* file_name;
   if (!copy_in(&file_name, stack, sizeof(char*)))
     return -1;
 
   // Checks if the file name goes into unmapped memory
-  if((int*) file_name == NULL || !valid_esp((void*)file_name, 3)){
+  if((int*) file_name == NULL || !valid_ptr((void*)file_name, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
   }
-  
-
-  //check for null filename or invalid ptr
-  // if((int*) file_name == NULL || pagedir_get_page(thread_current()->pagedir, (void*) file_name) == NULL){
-  //   lock_acquire(&error_lock);
-  //   raised_error = true;
-  //   lock_release(&error_lock);
-  //   return -1;
-  // }
   
   //open file
   lock_acquire(&file_lock);
@@ -351,7 +341,7 @@ int read(uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
 
-  if(!valid_esp((void*)buffer, 0)) {
+  if(!valid_ptr((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -395,7 +385,7 @@ int write(uint8_t* stack){
     return -1;
 
   // Checks if the buffer goes into unmapped memory
-  if(!valid_esp((void*)buffer, 0)) {
+  if(!valid_ptr((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -418,7 +408,8 @@ int write(uint8_t* stack){
 
   int write_size = 0;
   if(is_file_exe(f->file)){
-    //if file is an executable, check if what we're writing will change the contents, if not then pretend to write
+    //if file is an executable, check if what we're writing will change 
+    // the contents, if not then pretend to write
     char read_buffer[size];
     int read_size = file_read(f->file,read_buffer,size);
     if(read_size == size && strcmp(read_buffer, buffer) == 0){

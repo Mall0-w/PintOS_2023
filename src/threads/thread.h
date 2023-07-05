@@ -161,6 +161,7 @@ void thread_set_priority (int);
 void thread_sleep(int64_t ticks, int64_t start);
 void awaken_threads(int64_t ticks);
 bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux);
+bool check_current_thread_priority_against_ready(void);
 
 void handle_lock_acquire(struct lock *lock);
 void handle_lock_block(struct lock *lock);
