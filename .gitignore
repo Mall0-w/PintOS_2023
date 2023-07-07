@@ -59,4 +59,3 @@ dkms.conf
 Dockerfile
 docker-compose.yml
 .github
-.vscode/settings.json

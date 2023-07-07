@@ -39,11 +39,6 @@ static inline void *pg_round_up (const void *va) {
 static inline void *pg_round_down (const void *va) {
   return (void *) ((uintptr_t) va & ~PGMASK);
 }
-
-#define WORD_BYTES 4
-static inline void *round_word_down (const void *va){
-  return (void *) ((uintptr_t) va - ((uintptr_t) va % WORD_BYTES));
-}
 
 /* Base address of the 1:1 physical-to-virtual mapping.  Physical
    memory is mapped starting at this virtual address.  Thus,
