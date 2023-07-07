@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "devices/timer.h"
 #include "threads/fixed-point.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -63,7 +64,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-
 static int64_t load_avg;                    /* System load average */
 static struct list sleeping_thread_list;    /* List of sleeping threads */
   
@@ -545,6 +545,15 @@ init_thread (struct thread *t, const char *name, int priority)
     t->blocking_lock = NULL;
   } 
 
+  #ifdef USERPROG
+  sema_init(&t->wait_sema, 0);
+  sema_init(&t->exec_sema, 0);
+  list_init(&t->child_processes);
+  t->curr_fd = 3;
+  t->exit_code = -1;
+  list_init(&t->opened_files);
+  #endif
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -930,4 +939,54 @@ handle_mlfqs(int64_t ticks) {
       intr_yield_on_return();
     }
   }
+}
+
+/**
+create and init new child
+retuen the created child
+*/
+struct child_process*
+create_child(struct thread *t)
+{
+  struct child_process* child = malloc(sizeof(struct child_process));
+  child -> pid = t->tid;
+  child -> is_alive = true;
+  child -> first_wait = true;
+  child -> load_success = false;
+  child -> t = t;
+  child -> exit_code = 0;
+  return child;
+}
+
+/**
+iterate on child_processes and return the child which have the tid
+*/
+struct child_process*
+find_child_from_id(tid_t tid, struct list *child_processes)
+{
+  struct list_elem* e;
+  for (e = list_begin (child_processes); e != list_end (child_processes); e = list_next (e))
+  {
+    struct child_process *child = list_entry (e, struct child_process, child_elem);
+    if(child -> pid == tid)
+    {
+        return child;
+    }
+  }
+  return NULL;
+}
+
+/*Function used to get thread with tid id from the list of all threads
+if no such thread exists, return NULL*/
+struct thread* find_thread_from_id (tid_t id){
+  struct thread* curr_thread;
+  struct list_elem* e;
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e)){
+      //if find thread return
+      curr_thread = list_entry (e, struct thread, allelem);
+      if(curr_thread->tid == id)
+        return curr_thread;
+    }
+  return NULL;
 }
