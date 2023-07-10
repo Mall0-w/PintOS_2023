@@ -5,7 +5,7 @@
 #include "threads/palloc.h"
 
 struct frame {
-  void* frame_addr;
+  void* page_addr;
   struct hash_elem hash_elem;
 };
 

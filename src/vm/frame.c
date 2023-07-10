@@ -15,7 +15,7 @@ unsigned
 frame_hash (const struct hash_elem *h, void *aux UNUSED)
 {
   const struct frame *f = hash_entry (h, struct frame, hash_elem);
-  return hash_bytes (&f->frame_addr, sizeof f->frame_addr);
+  return hash_bytes (&f->page_addr, sizeof f->page_addr);
 }
 
 /* Returns true if frame a precedes frame b. */
@@ -26,7 +26,7 @@ frame_less (const struct hash_elem *a_, const struct hash_elem *b_,
   const struct frame *a = hash_entry (a_, struct frame, hash_elem);
   const struct frame *b = hash_entry (b_, struct frame, hash_elem);
 
-  return a->frame_addr < b->frame_addr;
+  return a->page_addr < b->page_addr;
 }
 
 /*function used to init the frame table*/
@@ -44,7 +44,7 @@ bool add_frame_to_table(void* frame){
         return false;
 
     //insert into the frame table
-    f->frame_addr = frame;
+    f->page_addr = frame;
     lock_acquire(&frame_lock);
     hash_insert(&frame_table, &f->hash_elem);
     lock_release(&frame_lock);    
@@ -87,7 +87,7 @@ frame_get (void* address) {
     
     struct frame f;
     struct hash_elem* e;
-    f.frame_addr = address;
+    f.page_addr = address;
     lock_acquire(&frame_lock);
     e = hash_find(&frame_table, &f.hash_elem);
     struct frame* result = NULL;
@@ -103,7 +103,7 @@ frame_free (void* address) {
     struct frame* f = frame_get(address);
     lock_acquire(&frame_lock);
     //free its respective page and remove from hash table
-    palloc_free_page(f->frame_addr);
+    palloc_free_page(f->page_addr);
     hash_delete(&frame_table, &f->hash_elem);
     free(f);
     
