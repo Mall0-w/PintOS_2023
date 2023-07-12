@@ -5,9 +5,9 @@
 #include <stdbool.h>
 
 enum page_type {
-    FILE, // File
-    SWAP, // Swap
-    ZERO // All-zero page
+    FILE_ORIGIN, // File
+    SWAP_ORIGIN, // Swap
+    ZERO_ORIGIN // All-zero page
 };
 
 struct sup_pt_list {
@@ -18,12 +18,11 @@ struct sup_pt_list {
     off_t offset; // Offset of the file
     bool writable; // Writable or not
     size_t read_bytes; // Number of bytes to read
-    size_t zero_bytes; // Number of bytes to zero
+    size_t zero_bytes; // Number of bytes to zeros
 };
 
-void sup_pt_init(struct list *sup_page_table); // Initialize the supplemental page table
-void sup_pt_insert(struct list *sup_page_table, void *upage, struct file *file, off_t offset); // Add a new entry to the supplemental page table
-void sup_pt_remove(struct list *sup_page_table, void *upage); // Delete an entry from the supplemental page table
-struct list_elem *sup_pt_find(void *upage); // Find an entry in the supplemental page table
-bool sup_pt_less(const struct list_elem *a, const struct list_elem *b, void *aux);
+void sup_pt_init(struct list *sup_pt_list); // Initialize the supplemental page table
+void sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
+void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry from the supplemental page table
+struct list_elem *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
 
