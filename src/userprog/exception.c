@@ -128,6 +128,9 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  struct thread *t = thread_current ();
+  struct list_elem *spf;
+
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -150,8 +153,13 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if(user)
+  if(user && !is_user_vaddr(fault_addr))
    proc_exit(-1);
+  
+  spf = sup_pt_find(&t->spt, fault_addr);
+
+  printf("Type: %d\n", spf->type);
+
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
