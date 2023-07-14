@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -157,8 +158,24 @@ page_fault (struct intr_frame *f)
    proc_exit(-1);
   
   spf = sup_pt_find(&t->spt, fault_addr);
-   if(spf == NULL)
-      proc_exit(-1);
+  // Page not found in supplemental table OR
+  // User is trying to write to a page that is not writable
+  if(spf == NULL || (!spf->writable && write)) 
+    proc_exit(-1);
+
+  if(spf->type == FILE_ORIGIN) {
+    // Load the page from the file
+    //sup_load_file(spf);
+
+  }
+  else if(spf->type == SWAP_ORIGIN) {
+    // Load the page from the swap
+    //sup_load_swap(spf);
+  }
+  else if(spf->type == ZERO_ORIGIN) {
+    // Not sure for this one, does this have a valid page entry?
+    //sup_load_zero(spf);
+  }
 
    
 

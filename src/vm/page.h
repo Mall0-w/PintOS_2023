@@ -22,10 +22,15 @@ struct sup_pt_list {
     size_t read_bytes; // Number of bytes to read
     size_t zero_bytes; // Number of bytes to zeros
 };
-
+/* Supplemental table functions */
 void sup_pt_init(struct list *sup_pt_list); // Initialize the supplemental page table
 void sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
 void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry from the supplemental page table
 struct list_elem *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
+
+/* Getting the information from previous pages (file, swap, etc)*/
+void sup_load_file(struct sup_pt_list *spt);
+void sup_load_swap(struct sup_pt_list *spt);
+void sup_load_zero(struct sup_pt_list *spt);
 
 #endif /* vm/page.h */
