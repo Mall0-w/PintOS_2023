@@ -80,6 +80,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 void sort_ready_list_priority(void);
+bool check_current_thread_priority_against_ready(void);
 
 /* Alarm clock functions*/
 bool compare_thread_awake_time (const struct list_elem *a, 
@@ -551,6 +552,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->curr_fd = 3;
   t->exit_code = -1;
   list_init(&t->opened_files);
+  sup_pt_init(&t->spt);
   #endif
 
   old_level = intr_disable ();
@@ -964,11 +966,9 @@ struct child_process*
 find_child_from_id(tid_t tid, struct list *child_processes)
 {
   struct list_elem* e;
-  for (e = list_begin (child_processes); e != list_end (child_processes); 
-       e = list_next (e))
+  for (e = list_begin (child_processes); e != list_end (child_processes); e = list_next (e))
   {
-    struct child_process *child = list_entry (e, struct child_process, 
-                                              child_elem);
+    struct child_process *child = list_entry (e, struct child_process, child_elem);
     if(child -> pid == tid)
     {
         return child;

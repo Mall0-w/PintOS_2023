@@ -28,6 +28,7 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
+#include "vm/frame.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -37,7 +38,6 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
-
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
 
@@ -113,6 +113,9 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+
+   //init frame table
+  init_frame_table();
 #endif
 
   /* Start thread scheduler and enable interrupts. */
