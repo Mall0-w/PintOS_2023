@@ -68,7 +68,8 @@ get_user (const uint8_t *uaddr)
 }
  
 
-/*copy data of size size to dst_ from usrc_.  return false if an error occured, otherwise true*/
+/*copy data of size size to dst_ from usrc_.  
+return false if an error occured, otherwise true*/
 bool copy_in (void* dst_, const void* usrc_, size_t size){
   ASSERT (dst_ != NULL || size == 0);
   ASSERT (usrc_ != NULL || size == 0);
@@ -187,6 +188,8 @@ int exec(uint8_t* stack){
   }
   // Checks if page exists to a mapped physical memory for every byte in cmd_line
   if(!valid_esp((void*)cmd_line, 3)){
+  // Checks if page exists to a mapped physical memory 
+  // for every byte in cmd_line
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
