@@ -1,5 +1,6 @@
 #include <vm/page.h>
 #include "threads/synch.h"
+#include "threads/malloc.h"
 
 /* lock to ensure concurrency of the supplementary page table*/
 struct lock sup_pt_lock;
@@ -14,7 +15,7 @@ sup_pt_init(struct list *sup_pt_list) {
         lock_init(&sup_pt_lock);
         sup_pt_lock_init = true;
     }
-    list_init(&sup_pt_list);
+    list_init(sup_pt_list);
 }
 
 void
