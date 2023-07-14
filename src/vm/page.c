@@ -1,7 +1,21 @@
 #include <vm/page.h>
+#include "threads/synch.h"
 
 /* lock to ensure concurrency of the supplementary page table*/
 struct lock sup_pt_lock;
+bool sup_pt_lock_init = false;
+
+
+/*function used to init the supplementary page table*/
+void 
+sup_pt_init(struct list *sup_pt_list) {
+    /* Ensure lock is only initialized once */
+    if(sup_pt_lock_init == false) {
+        lock_init(&sup_pt_lock);
+        sup_pt_lock_init = true;
+    }
+    list_init(&sup_pt_list);
+}
 
 void
 sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes) {

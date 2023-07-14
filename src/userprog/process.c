@@ -527,7 +527,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
 
       /* Add to thread's supp page table*/
-      sup_pt_insert(&t->spt, kpage, FILE_ORIGIN, file, ofs, writable, page_read_bytes, page_zero_bytes);
+      sup_pt_insert(t->spt, FILE_ORIGIN, kpage, file, ofs, writable, page_read_bytes, page_zero_bytes);
 
       
 
@@ -623,6 +623,7 @@ struct process_file* find_file(struct thread* t, int fd){
 static bool
 install_page (void *upage, void *kpage, bool writable)
 {
+  struct thread *t = thread_current ();
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */

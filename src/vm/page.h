@@ -1,3 +1,5 @@
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
 #include <stdio.h>
 #include <list.h>
 #include <filesys/file.h>
@@ -26,3 +28,4 @@ void sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, s
 void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry from the supplemental page table
 struct list_elem *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
 
+#endif /* vm/page.h */

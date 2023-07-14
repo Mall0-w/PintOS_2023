@@ -129,7 +129,7 @@ page_fault (struct intr_frame *f)
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
   struct thread *t = thread_current ();
-  struct list_elem *spf;
+  struct sup_pt_list *spf;
 
 
   /* Obtain faulting address, the virtual address that was
@@ -157,6 +157,10 @@ page_fault (struct intr_frame *f)
    proc_exit(-1);
   
   spf = sup_pt_find(&t->spt, fault_addr);
+   if(spf == NULL)
+      proc_exit(-1);
+
+   
 
   printf("Type: %d\n", spf->type);
 
