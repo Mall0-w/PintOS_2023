@@ -64,11 +64,11 @@ reentrant version, strtok_r, to ensure the correctness of the code.
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
 
-                 SYSTEM CALLS
-                 ============
 -   puts less strain on the kernel, allowing it to make better use of its time since it doesnt need to process the command.
 -   increased abstraction for user; shell parses input to make it readable instead of user having the ensure valid input.
 
+                 SYSTEM CALLS
+                 ============
 ---- DATA STRUCTURES ----
 
 >> B1: Copy here the declaration of each new or changed `struct' or
@@ -115,6 +115,27 @@ with fd 1 but a single process cannot have two files with fd 1).
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+(Assuming question is asking how data goes from user program into the kernel and vice versa)
+
+The user calls a syscalls with a specific syscall method (write, read, etc), 
+with arguments, which gets put on the stack. The syscall handler reads the 
+handler number and calls the appropriate handler. The handler then reads the
+arguments from the stack and calls the appropriate syscall function. 
+The function then reads the arguments from the stack and calls the appropriate function.
+The pointers in the handlers such as the stack pointer and argument pointer are 
+validated by checking if they are in the user virtual address space and if there's
+a valid thread page directory. 
+
+For example, for write syscall, the user calls the write syscall with the file
+descriptor, buffer, and size which gets handled and put on the stack with the 
+interrupt number corresponding to the write syscall.  The syscall handler reads 
+the handler number and then passes the remaining arguments to the write syscall.  
+The write syscall opens the appropriate file (assuming it exists and all 
+arguments were valid and the file can be written to), writes the data to that 
+buffer and returns the number of bytes written. The return code then gets passed 
+back to the user through the handling of the interrupt frame triggered when calling 
+the syscall and the buffer now having the appropriate data written to it.
+
 
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
@@ -124,13 +145,27 @@ with fd 1 but a single process cannot have two files with fd 1).
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+The least possible number of inspections of the page table for a full page of 
+data is one. This occurs when all of the data is located on one page.  
+The greatest possible number of inspections of the page table for a full page 
+of data is two. This occurs when some of the data overlaps between two pages.
+
+Similar case happens for 2 bytes, the best case is one call which has both 
+bytes on the same page, and the worst case is two calls, one for each byte on 
+different pages.
+
+An improvement for page calling would be to prevent system calls from crossing page boundaries.
+This however, would cause fragmentation of memory, and would not maximize the amount of data
+in each page. This would cause the number of page calls to be 1, as all the 
+data would be on the same page. 
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
 
 When a thread is first created, it intalizes a semaphore with value 0 to 
 represent it waiting on a child. when it has to wait for a child, it finds 
 the child with the given idea, and decrements its semaphore with value 0, 
-causing it to be blocked by that child.  when that child exits, it sema_ups 
+causing it to be blocked by that child.  When that child exits, it sema_ups 
 on that semaphore unlocking its parent, and the parent then grabs the exit 
 code from the child when it next runs.
 
@@ -148,9 +183,29 @@ code from the child when it next runs.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
-We decided that the best way to handle all this error checking without obscuring the primary function was to include the error checking within the helper functions of the code, checking for errors after calling said helpers.  For example copy_in copies data from the stack passed to the system call to a variable however, if it detects that we are copying from is not a valid user_address it stops copying and returns false to indicate an error has occured.  We can then check the output of copy_in to see if we need to raise an error or not.  For cases where we have to terminate the thread, we also introduced a variable called raised_error which is shared between the handler and all the syscalls.  If, for example, the address for our buffer in write isn't valid, we set raised_error to true and return.  The handler then notices that raised_error has been set to true and exits the process with a -1.  In addition to this, we tried to ensure that our syscalls and other functions were well commented in order to try to minimize the amount of confusion these error checks could cause.
+We decided that the best way to handle all this error checking without obscuring 
+the primary function was to include the error checking within the helper functions 
+of the code, checking for errors after calling said helpers.  For example copy_in 
+copies data from the stack passed to the system call to a variable however, if 
+it detects that we are copying from is not a valid user_address it stops copying 
+and returns false to indicate an error has occured.  We can then check the output 
+of copy_in to see if we need to raise an error or not.  For cases where we have 
+to terminate the thread, we also introduced a variable called raised_error which 
+is shared between the handler and all the syscalls.  If, for example, the address 
+for our buffer in write isn't valid, we set raised_error to true and return.  
+The handler then notices that raised_error has been set to true and exits the 
+process with a -1.  In addition to this, we tried to ensure that our syscalls 
+and other functions were well commented in order to try to minimize the amount 
+of confusion these error checks could cause.
 
-In terms of making sure the appropriate resources are freed, we ensure that whenever a process exits (which all processes will do), they check for their appropriate resources and free them.  For example, when process_exit() is eventually called in the thread/process exiting process, the kernel will iterate through all the process' files and both closes them and frees the process_file struct for that file which was malloced earlier.  We determined that accounting for all temporary resources in the guarenteed end state of the program would both be the most practical and effcient way of dealing with all of it.
+In terms of making sure the appropriate resources are freed, we ensure that 
+whenever a process exits (which all processes will do), they check for their 
+appropriate resources and free them.  For example, when process_exit() is 
+eventually called in the thread/process exiting process, the kernel will iterate 
+through all the process' files and both closes them and frees the process_file 
+struct for that file which was malloced earlier.  We determined that accounting 
+for all temporary resources in the guarenteed end state of the program would 
+both be the most practical and effcient way of dealing with all of it.
 
 
 ---- SYNCHRONIZATION ----

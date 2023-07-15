@@ -22,6 +22,7 @@
 #include "filesys/file.h"
 #include "threads/malloc.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
@@ -494,6 +495,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *t = thread_current ();
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -523,6 +526,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }
 
+      /* Add to thread's supp page table*/
+      sup_pt_insert(&t->spt, FILE_ORIGIN, kpage, file, ofs, writable, page_read_bytes, page_zero_bytes);
+
+      
+
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -536,6 +544,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (int argc, char* argv[], void **esp) 
 {
+  struct thread *t = thread_current();
   uint8_t *kpage;
   bool success = false;
 
@@ -578,6 +587,8 @@ setup_stack (int argc, char* argv[], void **esp)
         //return address
         *esp = *esp - sizeof(int*);
         *((int**) *esp) = NULL;
+
+
       }
       else
         frame_free (kpage);
