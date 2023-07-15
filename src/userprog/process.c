@@ -527,7 +527,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
 
       /* Add to thread's supp page table*/
-      sup_pt_insert(&t->spt, FILE_ORIGIN, kpage, file, ofs, writable, page_read_bytes, page_zero_bytes);
+      sup_pt_insert(&t->spt, FILE_ORIGIN, upage, file, ofs, writable, page_read_bytes, page_zero_bytes);
 
       
 
@@ -544,7 +544,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (int argc, char* argv[], void **esp) 
 {
-  struct thread *t = thread_current();
   uint8_t *kpage;
   bool success = false;
 
@@ -587,8 +586,6 @@ setup_stack (int argc, char* argv[], void **esp)
         //return address
         *esp = *esp - sizeof(int*);
         *((int**) *esp) = NULL;
-
-
       }
       else
         frame_free (kpage);

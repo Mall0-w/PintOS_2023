@@ -28,6 +28,7 @@ sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct
     spt->writable = writable;
     spt->read_bytes = read_bytes;
     spt->zero_bytes = zero_bytes;
+    spt->loaded = false;
     list_push_front(sup_pt_list, &spt->elem);
 }
 
@@ -44,13 +45,13 @@ sup_pt_remove(struct list *sup_pt_list, void *upage) {
     }
 }
 
-struct list_elem 
-*sup_pt_find(struct list *sup_pt_list, void *upage) {
+struct sup_pt_list*
+sup_pt_find(struct list *sup_pt_list, void *upage) {
     struct list_elem *e;
     for (e = list_begin(sup_pt_list); e != list_end(sup_pt_list); e = list_next(e)) {
         struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
         if (spt->upage == upage) {
-            return e;
+            return spt;
         }
     }
     return NULL;
