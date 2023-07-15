@@ -109,7 +109,10 @@ bool evict_frame(void){
         return false;
     }
     
-    //save frame in swap table and update supplementary page table
+    //check if frame should even be written to swap
+    // if(pagedir_is_dirty(frame_to_evict->frame_thread->pagedir, frame_to_evict->page_addr)){
+    //     //save frame in swap table and update supplementary page table
+    // }
     
     deallocate_frame(frame_to_evict, false);
     lock_release(&frame_lock);
