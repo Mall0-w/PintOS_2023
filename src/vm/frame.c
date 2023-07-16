@@ -10,6 +10,7 @@
 #include "threads/vaddr.h"
 #include "kernel/bitmap.h"
 #include "lib/string.h"
+#include "threads/pte.h"
 
 /* hash used to map frames*/
 struct hash frame_table;
@@ -119,7 +120,7 @@ bool save_frame(struct frame* f){
         //update index and sup page table details
         spte->swap_slot = swap_index;
         spte->type = SWAP_ORIGIN;
-        spte->swapable = true;
+        spte->writable = *(f->pte) & PTE_W;
     }
     //NOTE if it wasn't dirty then we can just reread it from the exe
     //which is compltley possible if type remains FILE_ORIGIN

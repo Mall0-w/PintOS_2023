@@ -1,6 +1,12 @@
 #include <vm/page.h>
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include "vm/frame.h"
+#include "userprog/pagedir.h"
+#include "vm/swap.h"
+#include "userprog/process.h"
+#include "lib/string.h"
+#include "threads/vaddr.h"
 
 /* lock to ensure concurrency of the supplementary page table*/
 struct lock sup_pt_lock;
@@ -55,4 +61,60 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
         }
     }
     return NULL;
+}
+
+bool
+sup_load_swap(struct sup_pt_list* spt){
+    ASSERT(spt->type == SWAP_ORIGIN);
+    ASSERT(spt->loaded == false);
+    struct thread* t = thread_current();
+    //allocate frame and check that it was allocated
+    void* kernel_addr = frame_add(PAL_USER, t);
+    if(kernel_addr == NULL)
+        return false;
+    //remap pages
+    if(!pagedir_set_page(t->pagedir, spt->upage, kernel_addr, spt->writable)){
+        //if remap failed, free frame and return false;
+        frame_free(kernel_addr);
+        return false;
+    }
+
+    //swap in from swap slot
+    page_swap_out(spt->swap_slot, spt->upage);
+    spt->loaded = true;
+    //get a page for the swap slot
+    return true;
+}
+
+bool
+sup_load_file(struct sup_pt_list* spt){
+    ASSERT(spt->loaded == false);
+    
+    file_seek(spt->file, spt->offset);
+    /* Get a page of memory. */
+    uint8_t* kpage = frame_add (PAL_USER, thread_current());
+    //uint8_t* kpage = palloc_get_page (PAL_USER);
+    if (kpage == NULL)
+    return false;
+
+    /* Load this page. */
+    if (file_read (spt->file, kpage, spt->read_bytes) != (int) spt->read_bytes)
+    {
+        frame_free (kpage);
+        //palloc_free_page (kpage);
+        return false; 
+    }
+    memset (kpage + spt->read_bytes, 0, spt->zero_bytes);
+    struct thread* t = thread_current();
+    /* Add the page to the process's address space. */
+    if (!(pagedir_get_page (t->pagedir, spt->upage) == NULL
+          && pagedir_set_page (t->pagedir, spt->upage, kpage, spt->writable))) 
+    {
+        frame_free (kpage);
+        return false; 
+    }
+
+    spt->loaded = true;
+
+    return true;
 }

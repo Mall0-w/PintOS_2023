@@ -22,7 +22,6 @@ struct sup_pt_list {
     size_t read_bytes; // Number of bytes to read
     size_t zero_bytes; // Number of bytes to zeros
     size_t swap_slot;   //index of swap slot
-    bool swapable;      //boolean used to indicate if it is usable with the swap slot
     bool loaded;        //boolean used to indicate if its loaded in memeory
 };
 /* Supplemental table functions */
@@ -32,8 +31,8 @@ void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry fr
 struct sup_pt_list *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
 
 /* Getting the information from previous pages (file, swap, etc)*/
-void sup_load_file(struct sup_pt_list *spt);
-void sup_load_swap(struct sup_pt_list *spt);
-void sup_load_zero(struct sup_pt_list *spt);
+bool sup_load_file(struct sup_pt_list *spt);
+bool sup_load_swap(struct sup_pt_list *spt);
+bool sup_load_zero(struct sup_pt_list *spt);
 
 #endif /* vm/page.h */
