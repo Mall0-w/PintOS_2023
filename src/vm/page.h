@@ -5,6 +5,12 @@
 #include <filesys/file.h>
 #include <list.h>
 #include <stdbool.h>
+#include "threads/thread.h"
+
+/*the limit above the stack to start considering*/
+#define ABOVE_STACK_LIMIT 32
+/*max stack size (8MB)*/
+#define MAX_STACK_SIZE 8388608
 
 enum page_type {
     FILE_ORIGIN, // File
@@ -34,5 +40,7 @@ struct sup_pt_list *sup_pt_find(struct list *sup_pt_list, void *upage); // Find 
 bool sup_load_file(struct sup_pt_list *spt);
 bool sup_load_swap(struct sup_pt_list *spt);
 bool sup_load_zero(struct sup_pt_list *spt);
+
+bool increase_stack_size(void* user_address, struct thread* t);
 
 #endif /* vm/page.h */

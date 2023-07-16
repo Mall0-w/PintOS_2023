@@ -118,3 +118,30 @@ sup_load_file(struct sup_pt_list* spt){
 
     return true;
 }
+
+bool increase_stack_size(void* user_address, struct thread* t){
+    /*allocating a frame for the stack, using same flags for original stack frame*/
+    void* frame = frame_add(PAL_USER | PAL_ZERO, t);
+    if(frame == NULL)
+        return false;
+    /*create supplemenal page table entry*/
+    struct sup_pt_list *spt = malloc(sizeof(struct sup_pt_list));
+    spt->type = SWAP_ORIGIN;
+    spt->upage = user_address;
+    spt->file = NULL;
+    spt->offset = 0;
+    spt->writable = true;
+    spt->read_bytes = 0;
+    spt->zero_bytes = 0;
+    spt->loaded = true;
+    list_push_front(&t->spt, &spt->elem);
+    
+    /*mapping the frames*/
+    if(!pagedir_set_page(t->pagedir, pg_round_down(user_address), frame, true)){
+        //if mapping failed, free the frame and return false
+	    frame_free(frame);
+        return false; 
+	}
+
+    return true;
+}
