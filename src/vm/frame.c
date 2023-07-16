@@ -49,7 +49,7 @@ void init_frame_table(void){
 returns true if added sucessfully false otherwise*/
 bool add_frame_to_table(void* frame, struct thread* frame_thread){
     //malloc the frame
-    struct frame* f = malloc(sizeof frame);
+    struct frame* f = malloc(sizeof(struct frame));
     if(f == NULL)
         return false;
 
