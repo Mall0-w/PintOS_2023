@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
+#include "vm/page.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -111,6 +112,9 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct list spt;         /* Supplemental page table */
+
+
 #endif
 
     /* Owned by thread.c. */
@@ -161,6 +165,7 @@ void thread_set_priority (int);
 void thread_sleep(int64_t ticks, int64_t start);
 void awaken_threads(int64_t ticks);
 bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void* aux);
+bool check_current_thread_priority_against_ready(void);
 
 void handle_lock_acquire(struct lock *lock);
 void handle_lock_block(struct lock *lock);

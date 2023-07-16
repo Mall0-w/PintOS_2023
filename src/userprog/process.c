@@ -21,6 +21,8 @@
 #include <stdbool.h>
 #include "filesys/file.h"
 #include "threads/malloc.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
@@ -493,6 +495,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *t = thread_current ();
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -503,14 +507,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      uint8_t *kpage = frame_add (PAL_USER);
       if (kpage == NULL)
         return false;
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          frame_free (kpage);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -518,9 +522,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          frame_free (kpage);
           return false; 
         }
+
+      /* Add to thread's supp page table*/
+      sup_pt_insert(&t->spt, FILE_ORIGIN, kpage, file, ofs, writable, page_read_bytes, page_zero_bytes);
+
+      
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -535,10 +544,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (int argc, char* argv[], void **esp) 
 {
+  struct thread *t = thread_current();
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = frame_add (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -577,9 +587,11 @@ setup_stack (int argc, char* argv[], void **esp)
         //return address
         *esp = *esp - sizeof(int*);
         *((int**) *esp) = NULL;
+
+
       }
       else
-        palloc_free_page (kpage);
+        frame_free (kpage);
     }
   return success;
 }
