@@ -496,7 +496,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
   struct thread *t = thread_current ();
 
-  file_seek (file, ofs);
+  // Don't need to seek file since we are getting it lazily
+  //file_seek (file, ofs);
+  // When seeking from different parts of the file, we need to
+  // find the correct offset when seeking from the file
+  off_t new_offset = ofs;
+  printf("Initial upage and offset: %p, %d\n", upage, new_offset);
+  printf("File pointer: %p\n", file);
+
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -506,91 +513,93 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t* kpage = frame_add (PAL_USER, thread_current());
-      //uint8_t* kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+      // uint8_t* kpage = frame_add (PAL_USER, thread_current());
+      // //uint8_t* kpage = palloc_get_page (PAL_USER);
+      // if (kpage == NULL)
+      //   return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          frame_free (kpage);
-          //palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      // /* Load this page. */
+      // if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+      //   {
+      //     frame_free (kpage);
+      //     //palloc_free_page (kpage);
+      //     return false; 
+      //   }
+      // memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          frame_free (kpage);
-          //palloc_free_page (kpage);
-          return false; 
-        }
+      // /* Add the page to the process's address space. */
+      // if (!install_page (upage, kpage, writable)) 
+      //   {
+      //     frame_free (kpage);
+      //     //palloc_free_page (kpage);
+      //     return false; 
+      //   }
 
       /* Add to thread's supp page table*/
-      sup_pt_insert(&t->spt, FILE_ORIGIN, upage, file, ofs, writable, page_read_bytes, page_zero_bytes);
-
+      if(!sup_pt_insert(&t->spt, FILE_ORIGIN, upage, file, new_offset, writable, page_read_bytes, page_zero_bytes)) {
+        return false;
+      }
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs += PGSIZE; // Unsure if this should be page_read_bytes or PGSIZE
     }
   return true;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
+   user virtual memory. */ 
 static bool
 setup_stack (int argc, char* argv[], void **esp) 
 {
-  uint8_t *kpage;
-  bool success = false;
+  struct thread *t = thread_current(); 
+  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  if(!sup_pt_insert(&t->spt, ZERO_ORIGIN, upage, NULL, 0, true, 0, PGSIZE)) {
+    return false;
+  }
+  struct sup_pt_list* spt_entry = sup_pt_find(&t->spt, upage);
 
-  kpage = frame_add (PAL_USER | PAL_ZERO, thread_current());
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success){
-        *esp = PHYS_BASE;
-        char* arg_pointers[argc];
-        int offset = 0;
-        //pushing args onto stack in reverse order
-        for(int i = argc - 1; i >= 0; i--){
-          //offset stack pointer with enough room for arg, offset length by 1 for null term
-          //using 128 as limit for strlen because of limit said in docs
-          offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
-          *esp = *esp - offset;
-          //copy arg into stack
-          memcpy(*esp, argv[i], offset);
-          //copy that pointer into the args
-          arg_pointers[i] = *esp;
-        }
-        //round the current stack position down by 4 to align with words
-        *esp = round_word_down(*esp);
-        //offset word for null pointer sentinel
-        *esp = *esp - sizeof(int*);
-        *((int**) *esp) = NULL;
-        //push pointers onto stack, again in reverse order
-        for(int i = argc - 1; i >= 0; i--){
-          *esp = *esp - sizeof(char*);
-          *((char**) *esp) = arg_pointers[i];
-        }
-        //now push pointer to first arg, argc, and null pointer for return address
-        //first arg
-        *esp = *esp - sizeof(char**);
-        *((char***) *esp) = *esp + sizeof(char*);
-        //argc
-        *esp = *esp - sizeof(int*);
-        *((int*) *esp) = argc;
-        //return address
-        *esp = *esp - sizeof(int*);
-        *((int**) *esp) = NULL;
-      }
-      else
-        frame_free (kpage);
-    }
-  return success;
+  if(!sup_load_zero(spt_entry)) {
+    return false;
+  }
+
+  *esp = PHYS_BASE;
+  char* arg_pointers[argc];
+  int offset = 0;
+  //pushing args onto stack in reverse order
+  for(int i = argc - 1; i >= 0; i--){
+    //offset stack pointer with enough room for arg, offset length by 1 for null term
+    //using 128 as limit for strlen because of limit said in docs
+    offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
+    *esp = *esp - offset;
+    //copy arg into stack
+    memcpy(*esp, argv[i], offset);
+    //copy that pointer into the args
+    arg_pointers[i] = *esp;
+  }
+  //round the current stack position down by 4 to align with words
+  *esp = round_word_down(*esp);
+  //offset word for null pointer sentinel
+  *esp = *esp - sizeof(int*);
+  *((int**) *esp) = NULL;
+  //push pointers onto stack, again in reverse order
+  for(int i = argc - 1; i >= 0; i--){
+    *esp = *esp - sizeof(char*);
+    *((char**) *esp) = arg_pointers[i];
+  }
+  //now push pointer to first arg, argc, and null pointer for return address
+  //first arg
+  *esp = *esp - sizeof(char**);
+  *((char***) *esp) = *esp + sizeof(char*);
+  //argc
+  *esp = *esp - sizeof(int*);
+  *((int*) *esp) = argc;
+  //return address
+  *esp = *esp - sizeof(int*);
+  *((int**) *esp) = NULL;
+
+  return true;
 }
 
 /*Function used to find a processs_file of given fd under thread

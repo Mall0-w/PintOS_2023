@@ -32,7 +32,7 @@ struct sup_pt_list {
 };
 /* Supplemental table functions */
 void sup_pt_init(struct list *sup_pt_list); // Initialize the supplemental page table
-void sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
+bool sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
 void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry from the supplemental page table
 struct sup_pt_list *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
 

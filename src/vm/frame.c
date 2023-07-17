@@ -173,10 +173,14 @@ frame_add (enum palloc_flags flags, struct thread* frame_thread) {
     //check for PAL_ZERO and allocate accordingly (basically code)
     //that used to be in process.c
     void* frame = NULL;
-    if(flags & PAL_ZERO)
+    if(flags & PAL_ZERO) {
+        printf("PAL_ZERO\n");
         frame = palloc_get_page(PAL_USER | PAL_ZERO);
-    else
+    }
+    else {
+        printf("NO PAL_ZERO\n");
         frame = palloc_get_page(PAL_USER);
+    }
 
     //check if room for page
     if(frame == NULL){

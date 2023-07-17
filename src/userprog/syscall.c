@@ -132,6 +132,8 @@ syscall_handler (struct intr_frame *f)
     proc_exit(-1);
   }
 
+  printf("Interrupt number: %d\n", interrupt_number);
+
   //if interrupt number is valid, call its function and grab return code
   if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
@@ -177,6 +179,7 @@ void proc_exit(int status){
 
 /*HANLDER FOR SYS_EXEC*/
 int exec(uint8_t* stack){
+  printf("exec\n");
   struct thread* cur = thread_current();
   tid_t pid;
   char* cmd_line;
