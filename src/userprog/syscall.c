@@ -576,7 +576,7 @@ mapid_t mmap(uint8_t* stack) {
   mmap_f->id = mapid;
   mmap_f->file = f;
   mmap_f->addr = addr;
-  list_push_back(&cur.mmap_files, &mmap_f->mmap_elem);
+  list_push_back(&cur->mmap_files, &mmap_f->mmap_elem);
 
   lock_release(&file_lock);
   return mapid;

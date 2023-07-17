@@ -109,12 +109,12 @@ struct thread
     struct thread* parent;
     int exit_code;
 
-#ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
     struct list spt;         /* Supplemental page table */
     struct list mmap_files;
 
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
 
 #endif
 
