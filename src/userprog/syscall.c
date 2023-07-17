@@ -15,6 +15,7 @@
 #include "devices/input.h"
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(uint8_t* stack) = {
@@ -30,7 +31,9 @@ static int (*handlers[])(uint8_t* stack) = {
   [SYS_WRITE]write,
   [SYS_SEEK]seek,
   [SYS_TELL]tell,
-  [SYS_CLOSE]close
+  [SYS_CLOSE]close,
+  [SYS_MMAP]mmap,
+  [SYS_MUNMAP]munmap
 };
 
 /*Lock used to handle filesys concurrency*/
@@ -510,4 +513,75 @@ void close_proc_file(struct process_file* f, bool release_lock){
   if(release_lock)
     lock_release(&file_lock);
   return;
+}
+
+mapid_t mmap(uint8_t* stack) {
+  struct thread *cur = thread_current();
+  int fd;
+  void *addr;
+  uint8_t* curr_pos = stack;
+  if(!copy_in(&fd, curr_pos, sizeof(int)))
+    return -1;
+  curr_pos += sizeof(int);
+  if(!copy_in(&addr, curr_pos, sizeof(void*)))
+    return -1;
+
+  // Checks if the buffer goes into unmapped memory
+  if(fd == 0 || fd == 1 || !valid_esp((void*)addr, 0)) {
+    lock_acquire(&error_lock);
+    raised_error = true;
+    lock_release(&error_lock);
+    return -1;
+  }
+
+  lock_acquire(&file_lock);
+
+  struct process_file* f = find_file(cur, fd);
+
+  if(f == NULL || file_length(f) == 0){
+    lock_release(&file_lock);
+    return -1;
+  }
+
+  size_t offset;
+  void *cur_addr;
+
+  for (size_t i = 0; i < file_length(f); i++) {
+    offset = i * PGSIZE;
+    cur_addr = addr + offset;
+    if (sup_pt_find(&cur->spt, cur_addr)) {
+      lock_release(&file_lock);
+      return -1;
+    }
+  }
+
+  for (size_t i = 0; i < file_length(f); i++) {
+    offset = i * PGSIZE;
+    cur_addr = addr + offset;
+    
+    size_t page_read_bytes = PGSIZE < file_length(f) - offset ? PGSIZE : file_length(f) - offset;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    sup_pt_insert(&cur->spt, FILE_ORIGIN, cur_addr, f, offset, true, page_read_bytes, page_zero_bytes);
+  }
+  
+  mapid_t mapid;
+  if (!list_empty(&cur->mmap_files)) {
+    mapid = list_entry(list_back(&cur->mmap_files), struct mmap_file, mmap_elem)->id + 1;
+  } else {
+    mapid = 1;
+  }
+
+  struct mmap_file *mmap_f = (struct mmap_file *) malloc(sizeof(struct mmap_file));
+  mmap_f->id = mapid;
+  mmap_f->file = f;
+  mmap_f->addr = addr;
+  list_push_back(&cur.mmap_files, &mmap_f->mmap_elem);
+
+  lock_release(&file_lock);
+  return mapid;
+}
+
+void munmap(uint8_t* stack) {
+
 }

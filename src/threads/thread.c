@@ -553,6 +553,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exit_code = -1;
   list_init(&t->opened_files);
   sup_pt_init(&t->spt);
+  list_init(&t->mmap_list);
   #endif
 
   old_level = intr_disable ();
