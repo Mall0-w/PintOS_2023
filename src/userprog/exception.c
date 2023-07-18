@@ -132,6 +132,7 @@ page_fault (struct intr_frame *f)
   void *fault_addr;  /* Fault address. */
   struct thread *t = thread_current ();
   struct sup_pt_list *spf;
+  //PANIC("page fault");
 
 
   /* Obtain faulting address, the virtual address that was
@@ -155,6 +156,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+
   if(user && !is_user_vaddr(fault_addr))
    proc_exit(-1);
 
@@ -163,17 +165,22 @@ page_fault (struct intr_frame *f)
   // Page not found in supplemental table OR
   // User is trying to write to a page that is not writable
    if(spf == NULL){
+      //bool success = find_spt(rounded);
+
+
+
       //check if new stack page is to be allocated
       //do this by checking if stack pointer of frame is below fault_address and fault_address
       //is above the max stack size
       //subtracting above stack limit because of faults 32 above stack pointer
       if((f->esp - ABOVE_STACK_LIMIT) <= fault_addr  && MAX_STACK_SIZE >=(PHYS_BASE - pg_round_down(fault_addr))){
          if(!increase_stack_size(fault_addr, thread_current()))
-            PANIC("failed to increase stack size");
+            proc_exit(-1);
       }
       else{
-         if (!pagedir_get_page (thread_current()->pagedir, fault_addr))
+         if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) {
             proc_exit(-1);
+         }
 
          /* To implement virtual memory, delete the rest of the function
          body, and replace it with code that brings in the page to
@@ -192,19 +199,20 @@ page_fault (struct intr_frame *f)
       if(spf->type == FILE_ORIGIN) {
          // Load the page from the file
          if(!sup_load_file(spf))
-            PANIC("unable to load from file when handling page fault");
+            proc_exit(-1);
+          //printf("loaded file\n");
       }
       else if(spf->type == SWAP_ORIGIN) {
          // Load the page from the swap
          //sup_load_swap(spf);
          if(!sup_load_swap(spf))
-            PANIC("unable to load from swap slot when handling page fault");
+            proc_exit(-1);
       }
       else if(spf->type == ZERO_ORIGIN) {
          // Not sure for this one, does this have a valid page entry?
          //sup_load_zero(spf);
       }else{
-            if (!pagedir_get_page (thread_current()->pagedir, fault_addr))
+            if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) 
                proc_exit(-1);
             /* To implement virtual memory, delete the rest of the function
             body, and replace it with code that brings in the page to

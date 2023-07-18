@@ -131,7 +131,6 @@ syscall_handler (struct intr_frame *f)
   if(!copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))) {
     proc_exit(-1);
   }
-
   //if interrupt number is valid, call its function and grab return code
   if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
