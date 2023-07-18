@@ -39,7 +39,7 @@ size_t page_swap_in(void* page_address){
     //acquire lock for the swap
     lock_acquire(&swap_lock);
     //find an open index and flip it to claim it
-    size_t bitmap_index = bitmap_scan_and_flip(swap_map, 0, 1, true);
+    size_t bitmap_index = bitmap_scan_and_flip(swap_map, 0, 1, false);
 
     //if not found, return the error
     if(bitmap_index == BITMAP_ERROR){

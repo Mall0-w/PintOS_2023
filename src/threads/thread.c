@@ -998,7 +998,6 @@ bool find_spt(void* uaddr) {
          struct thread *t = list_entry(e, struct thread, allelem);
          spf = sup_pt_find(&t->spt, uaddr);
          if(spf != NULL) {
-            printf("FOUND IT\n");
             return true;
          }
       }

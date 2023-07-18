@@ -110,7 +110,7 @@ bool save_frame(struct frame* f){
     //if dirty or designated to go into swap slot, swap into swap slot
     if(pagedir_is_dirty(f->frame_thread->pagedir, f->user_page_addr) || spte->type == SWAP_ORIGIN){
         //if dirty, need to load to a swap slot
-        printf("loading to swap slot");
+        //printf("loading to swap slot");
         //find an empty swap_index and dump page into it
         size_t swap_index = page_swap_in(f->user_page_addr);
         if(swap_index == BITMAP_ERROR){
@@ -183,8 +183,17 @@ frame_add (enum palloc_flags flags, struct thread* frame_thread) {
     //check if room for page
     if(frame == NULL){
         //no more room for frame so evict
-        //evict_frame();
-        PANIC("Not enough room to allocate frame");
+        if(!evict_frame()){
+            PANIC("failed to evict frame");
+            return NULL;
+        }
+        if(flags & PAL_ZERO) {
+            frame = palloc_get_page(PAL_USER | PAL_ZERO);
+        }
+        else {
+            frame = palloc_get_page(PAL_USER);
+        }
+        //PANIC("Not enough room to allocate frame");
         //would hypothetically evict frame here since there's not enough space for it
     }
 
