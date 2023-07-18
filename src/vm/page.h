@@ -5,6 +5,12 @@
 #include <filesys/file.h>
 #include <list.h>
 #include <stdbool.h>
+#include "threads/thread.h"
+
+/*the limit above the stack to start considering*/
+#define ABOVE_STACK_LIMIT 32
+/*max stack size (8MB)*/
+#define MAX_STACK_SIZE 8388608
 
 enum page_type {
     FILE_ORIGIN, // File
@@ -21,16 +27,20 @@ struct sup_pt_list {
     bool writable; // Writable or not
     size_t read_bytes; // Number of bytes to read
     size_t zero_bytes; // Number of bytes to zeros
+    size_t swap_slot;   //index of swap slot
+    bool loaded;        //boolean used to indicate if its loaded in memeory
 };
 /* Supplemental table functions */
 void sup_pt_init(struct list *sup_pt_list); // Initialize the supplemental page table
-void sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
+bool sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
 void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry from the supplemental page table
-struct list_elem *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
+struct sup_pt_list *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
 
 /* Getting the information from previous pages (file, swap, etc)*/
-void sup_load_file(struct sup_pt_list *spt);
-void sup_load_swap(struct sup_pt_list *spt);
-void sup_load_zero(struct sup_pt_list *spt);
+bool sup_load_file(struct sup_pt_list *spt);
+bool sup_load_swap(struct sup_pt_list *spt);
+bool sup_load_zero(struct sup_pt_list *spt);
+
+bool increase_stack_size(void* user_address, struct thread* t);
 
 #endif /* vm/page.h */

@@ -6,7 +6,9 @@
 #include "threads/thread.h"
 
 struct frame {
-  void* page_addr;
+  void* kernel_page_addr;
+  void* user_page_addr;
+  uint32_t* pte;
   struct hash_elem hash_elem;
   struct thread* frame_thread;
 };
@@ -27,6 +29,8 @@ void* frame_add (enum palloc_flags flags, struct thread* frame_thread); /*functi
 struct frame* frame_get (void* address); /*function used to get a frame from its address*/
 
 void frame_free (void* address); /*function used to free a frame*/
+
+bool save_frame(struct frame* f); /*Function used to save a frame that is being evicted*/
 
 bool evict_frame(void); /*Function used to evict a frame*/
 

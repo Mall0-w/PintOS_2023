@@ -39,7 +39,7 @@ size_t page_swap_in(void* page_address){
     //acquire lock for the swap
     lock_acquire(&swap_lock);
     //find an open index and flip it to claim it
-    size_t bitmap_index = bitmap_scan_and_flip(swap_map, 0, 1, true);
+    size_t bitmap_index = bitmap_scan_and_flip(swap_map, 0, 1, false);
 
     //if not found, return the error
     if(bitmap_index == BITMAP_ERROR){
@@ -79,12 +79,16 @@ void page_swap_out(size_t swap_index, void* page_address){
 
     //now that we have read from swap slot, mark it as empty
     bitmap_flip(swap_map, swap_index);
-    
+    //release lock
+    lock_release(&swap_lock);
+
+    return;
 }
 
 /*function used to determine the number of pages in a swap*/
 uint32_t num_pages_in_swap(struct block* swap_block){
     //divide number of sectors in swap by num sectors in a page
+    //can do int division since would have to floor anyways
     return block_size(swap_block) / num_sectors_in_page();
 }
 
