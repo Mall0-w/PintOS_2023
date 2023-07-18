@@ -187,4 +187,6 @@ struct child_process* create_child(struct thread *t);
 if no such thread exists, return NULL*/
 struct thread* find_thread_from_id (tid_t id);
 
+bool find_spt(void *uaddr);
+
 #endif /* threads/thread.h */

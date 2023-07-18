@@ -991,3 +991,16 @@ struct thread* find_thread_from_id (tid_t id){
     }
   return NULL;
 }
+
+bool find_spt(void* uaddr) {
+  struct sup_pt_list *spf;
+  for(struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+         struct thread *t = list_entry(e, struct thread, allelem);
+         spf = sup_pt_find(&t->spt, uaddr);
+         if(spf != NULL) {
+            printf("FOUND IT\n");
+            return true;
+         }
+      }
+  return false;
+}

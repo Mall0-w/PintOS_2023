@@ -26,9 +26,11 @@ sup_pt_init(struct list *sup_pt_list) {
 
 bool
 sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes) {
+    lock_acquire(&sup_pt_lock);
     struct sup_pt_list *spt = malloc(sizeof(struct sup_pt_list));
     if(spt == NULL)
         return false;
+    //printf("\n\nINSERTING UPAGE: %p\n\n", upage);
     spt->type = type;
     spt->upage = upage;
     spt->file = file;
@@ -38,11 +40,13 @@ sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct
     spt->zero_bytes = zero_bytes;
     spt->loaded = false;
     list_push_front(sup_pt_list, &spt->elem);
+    lock_release(&sup_pt_lock);
     return true;
 }
 
 void 
 sup_pt_remove(struct list *sup_pt_list, void *upage) {
+    lock_acquire(&sup_pt_lock);
     struct list_elem *e;
     for (e = list_begin(sup_pt_list); e != list_end(sup_pt_list); e = list_next(e)) {
         struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
@@ -52,6 +56,7 @@ sup_pt_remove(struct list *sup_pt_list, void *upage) {
             break;
         }
     }
+    lock_release(&sup_pt_lock);
 }
 
 struct sup_pt_list*
@@ -59,6 +64,8 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
     struct list_elem *e;
     for (e = list_begin(sup_pt_list); e != list_end(sup_pt_list); e = list_next(e)) {
         struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
+        //printf("sup_pt_find: %p\n", spt->upage);
+        //printf("curr spt pointer: %p\n", spt);
         if (spt->upage == upage) {
             return spt;
         }
@@ -94,7 +101,7 @@ sup_load_file(struct sup_pt_list* spt){
     ASSERT(spt->loaded == false);
     
     file_seek(spt->file, spt->offset);
-    printf("Seeking FILE with upage and offset: %p, %d\n", spt->upage, spt->offset);
+    //printf("Seeking FILE with upage and offset: %p, %d\n", spt->upage, spt->offset);
     /* Get a page of memory. */
     uint8_t* kpage = frame_add (PAL_USER, thread_current());
     //uint8_t* kpage = palloc_get_page (PAL_USER);
@@ -127,7 +134,7 @@ sup_load_file(struct sup_pt_list* spt){
 bool
 sup_load_zero(struct sup_pt_list* spt){
     ASSERT(spt->loaded == false);
-    printf("Seeking ZERO with upage and offset: %p, %d\n", spt->upage, spt->offset);
+    //printf("Seeking ZERO with upage and offset: %p, %d\n", spt->upage, spt->offset);
     /* Get a page of memory. */
     uint8_t* kpage = frame_add (PAL_USER | PAL_ZERO, thread_current());
     if (kpage == NULL) {

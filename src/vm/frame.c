@@ -174,11 +174,9 @@ frame_add (enum palloc_flags flags, struct thread* frame_thread) {
     //that used to be in process.c
     void* frame = NULL;
     if(flags & PAL_ZERO) {
-        printf("PAL_ZERO\n");
         frame = palloc_get_page(PAL_USER | PAL_ZERO);
     }
     else {
-        printf("NO PAL_ZERO\n");
         frame = palloc_get_page(PAL_USER);
     }
 

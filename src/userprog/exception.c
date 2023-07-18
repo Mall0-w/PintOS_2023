@@ -156,21 +156,19 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-                     fault_addr,
-                     not_present ? "not present" : "rights violation",
-                     write ? "writing" : "reading",
-                     user ? "user" : "kernel");
 
   if(user && !is_user_vaddr(fault_addr))
    proc_exit(-1);
 
   void* rounded = pg_round_down(fault_addr);
-  printf("rounded: %p\n", rounded);
   spf = sup_pt_find(&t->spt, rounded);
   // Page not found in supplemental table OR
   // User is trying to write to a page that is not writable
    if(spf == NULL){
+      //bool success = find_spt(rounded);
+
+
+
       //check if new stack page is to be allocated
       //do this by checking if stack pointer of frame is below fault_address and fault_address
       //is above the max stack size
@@ -181,7 +179,6 @@ page_fault (struct intr_frame *f)
       }
       else{
          if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) {
-            PANIC(" page fault not present");
             proc_exit(-1);
          }
 
