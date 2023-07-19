@@ -16,6 +16,8 @@
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
 #include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(uint8_t* stack) = {
@@ -527,16 +529,17 @@ int mmap(uint8_t* stack) {
     return -1;
 
   // Checks if the buffer goes into unmapped memory
-  if(fd == 0 || fd == 1 || !valid_esp((void*)addr, 0)) {
-    lock_acquire(&error_lock);
-    raised_error = true;
-    lock_release(&error_lock);
+  if(fd == 0 || fd == 1) {
     return -1;
   }
 
   lock_acquire(&file_lock);
 
-  struct file* f = find_file(cur, fd)->file;
+  struct file *f = NULL;
+  struct process_file *pf = find_file(cur, fd);
+  if (pf && pf->file) {
+    f = file_reopen(pf->file);
+  }
 
   if(f == NULL || file_length(f) == 0){
     lock_release(&file_lock);
@@ -582,14 +585,16 @@ int mmap(uint8_t* stack) {
   return mapid;
 }
 
-int munmap(uint8_t* stack) {
+int 
+munmap(uint8_t* stack) {
   mapid_t mapid;
   if(!copy_in(&mapid, stack, sizeof(int)))
     return -1;
   return munmap_helper(mapid);
 }
 
-int munmap_helper(mapid_t mapid) {
+int 
+munmap_helper(mapid_t mapid) {
   struct thread *cur = thread_current();
   struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
 
@@ -599,10 +604,21 @@ int munmap_helper(mapid_t mapid) {
 
   size_t offset;
   void *cur_addr;
+  struct sup_pt_list *cur_spt_entry;
 
   for (size_t i = 0; i < file_length(mmap_f->file); i++) {
     offset = i * PGSIZE;
     cur_addr = mmap_f->addr + offset;
+    size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
+    cur_spt_entry = sup_pt_find(&cur->spt, cur_addr);
+    if (cur_spt_entry->loaded) {
+      if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage) ||
+          pagedir_is_dirty(cur->pagedir, pagedir_get_page(cur->pagedir, cur_spt_entry->upage))) {
+        file_write_at(mmap_f->file, cur_spt_entry->upage, page_read_bytes, offset);
+      }
+      frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
+      pagedir_clear_page(cur->pagedir, cur_spt_entry->upage);
+    }
     sup_pt_remove(&cur->spt, cur_addr);
   }
 
@@ -617,7 +633,7 @@ struct mmap_file*
 find_mmap_file(struct thread *t, mapid_t mapid) {
   ASSERT (t != NULL);
   struct list_elem *e;
-  if (! list_empty(&t->mmap_files)) {
+  if (!list_empty(&t->mmap_files)) {
     for(e = list_begin(&t->mmap_files);
         e != list_end(&t->mmap_files); e = list_next(e))
     {
