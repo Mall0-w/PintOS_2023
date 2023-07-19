@@ -66,7 +66,7 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
         struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
         //printf("sup_pt_find: %p\n", spt->upage);
         //printf("curr spt pointer: %p\n", spt);
-        if (spt->upage == upage) {
+        if (pg_round_down(spt->upage) == pg_round_down(upage)) {
             return spt;
         }
     }
@@ -88,10 +88,12 @@ sup_load_swap(struct sup_pt_list* spt){
         frame_free(kernel_addr);
         return false;
     }
-
+    struct frame* f = frame_get(kernel_addr);
+    f->pinned = true;
     //swap in from swap slot
     page_swap_out(spt->swap_slot, spt->upage);
     spt->loaded = true;
+    f->pinned = false;
     //get a page for the swap slot
     return true;
 }
@@ -109,6 +111,8 @@ sup_load_file(struct sup_pt_list* spt){
         return false;
     }
 
+    struct frame* f = frame_get(kpage);
+    f->pinned = true;
     /* Load this page. */
     if (file_read (spt->file, kpage, spt->read_bytes) != (int) spt->read_bytes)
     {
@@ -125,6 +129,7 @@ sup_load_file(struct sup_pt_list* spt){
         frame_free (kpage);
         return false; 
     }
+    f->pinned = false;
 
     spt->loaded = true;
 

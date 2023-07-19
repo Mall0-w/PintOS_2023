@@ -15,6 +15,8 @@
 #include "devices/input.h"
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(uint8_t* stack) = {
@@ -340,11 +342,37 @@ int read(uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
 
-  if(!valid_esp((void*)buffer, 0)) {
+  //if invalid user address raise error
+  if(!is_user_vaddr(buffer) || buffer == NULL){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
     return -1;
+  }
+  //if buffer isn't loaded in memeory
+  struct thread* t = thread_current();
+  struct frame* buffer_frame = frame_get(pagedir_get_page(t->pagedir, pg_round_down(buffer)));
+  if(buffer_frame == NULL){
+    //either allocate memory or grow stack as seen appropriate AND PIN THE FRAME (unpin after read done)
+    //try to find supplemental page table entry first
+    struct sup_pt_list* spt = sup_pt_find(&t->spt, buffer);
+    if(spt != NULL && !spt->loaded){
+      if(spt->type == SWAP_ORIGIN){
+        sup_load_swap(spt);
+      }else if(spt->type == FILE_ORIGIN){
+        sup_load_file(spt);
+      }else{
+        sup_load_zero(spt);
+      }
+    }else if(spt == NULL && (uint8_t*)buffer >= (stack - ABOVE_STACK_LIMIT)){
+      increase_stack_size(buffer, t);
+    }else{
+      lock_acquire(&error_lock);
+      raised_error = true;
+      lock_release(&error_lock);
+      return -1;
+    }
+    buffer_frame = frame_get(pagedir_get_page(t->pagedir, pg_round_down(buffer)));
   }
 
   if(fd == STDOUT_FILENO){
@@ -360,7 +388,9 @@ int read(uint8_t* stack){
     lock_release(&file_lock);
     return -1;
   }
+  buffer_frame->pinned = true;
   int read_size = file_read(f->file, buffer, (off_t) size);
+  buffer_frame->pinned = false;
   lock_release(&file_lock);
   return read_size;
 }
