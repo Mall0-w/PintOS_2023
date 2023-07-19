@@ -553,7 +553,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exit_code = -1;
   list_init(&t->opened_files);
   sup_pt_init(&t->spt);
-  list_init(&t->mmap_list);
+  list_init(&t->mmap_files);
   #endif
 
   old_level = intr_disable ();
@@ -991,4 +991,16 @@ struct thread* find_thread_from_id (tid_t id){
         return curr_thread;
     }
   return NULL;
+}
+
+bool find_spt(void* uaddr) {
+  struct sup_pt_list *spf;
+  for(struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+         struct thread *t = list_entry(e, struct thread, allelem);
+         spf = sup_pt_find(&t->spt, uaddr);
+         if(spf != NULL) {
+            return true;
+         }
+      }
+  return false;
 }

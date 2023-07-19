@@ -1,5 +1,5 @@
-#ifndef VM_PAGE_H
-#define VM_PAGE_H
+#ifndef VM_SWAP_H
+#define VM_SWAP_H
 
 #include "kernel/bitmap.h"
 #include "devices/block.h"
