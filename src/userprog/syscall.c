@@ -515,7 +515,7 @@ void close_proc_file(struct process_file* f, bool release_lock){
   return;
 }
 
-mapid_t mmap(uint8_t* stack) {
+int mmap(uint8_t* stack) {
   struct thread *cur = thread_current();
   int fd;
   void *addr;
@@ -536,7 +536,7 @@ mapid_t mmap(uint8_t* stack) {
 
   lock_acquire(&file_lock);
 
-  struct process_file* f = find_file(cur, fd);
+  struct file* f = find_file(cur, fd)->file;
 
   if(f == NULL || file_length(f) == 0){
     lock_release(&file_lock);
@@ -582,14 +582,18 @@ mapid_t mmap(uint8_t* stack) {
   return mapid;
 }
 
-bool munmap(uint8_t* stack) {
-  struct thread *cur = thread_current();
+int munmap(uint8_t* stack) {
   mapid_t mapid;
   if(!copy_in(&mapid, stack, sizeof(int)))
     return -1;
+  return munmap_helper(mapid);
+}
+
+int munmap_helper(mapid_t mapid) {
+  struct thread *cur = thread_current();
   struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
 
-  if (mmap_f == NULL) return false;
+  if (mmap_f == NULL) return -1;
 
   lock_acquire(&file_lock);
 
@@ -599,8 +603,14 @@ bool munmap(uint8_t* stack) {
   for (size_t i = 0; i < file_length(mmap_f->file); i++) {
     offset = i * PGSIZE;
     cur_addr = mmap_f->addr + offset;
-    size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
+    sup_pt_remove(&cur->spt, cur_addr);
   }
+
+  list_remove(&mmap_f->mmap_elem);
+  file_close(mmap_f->file);
+  free(mmap_f);
+  lock_release(&file_lock);
+  return 1;
 }
 
 struct mmap_file*

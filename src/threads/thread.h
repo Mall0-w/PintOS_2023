@@ -136,9 +136,9 @@ struct thread
 
   struct mmap_file {
    mapid_t id;
-   struct process_file *file;
+   struct file *file;
    void *addr;
-   struct list_elem mmap_elem
+   struct list_elem mmap_elem;
   };
 
 /* If false (default), use round-robin scheduler.
