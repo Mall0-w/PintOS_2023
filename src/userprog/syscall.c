@@ -44,6 +44,7 @@ struct lock error_lock;
 bool raised_error = false;
 
 static void syscall_handler (struct intr_frame *);
+struct mmap_file* find_mmap_file(struct thread *t, mapid_t mapid);
 
 
 void
@@ -582,6 +583,40 @@ mapid_t mmap(uint8_t* stack) {
   return mapid;
 }
 
-void munmap(uint8_t* stack) {
+bool munmap(uint8_t* stack) {
+  struct thread *cur = thread_current();
+  mapid_t mapid;
+  if(!copy_in(&mapid, stack, sizeof(int)))
+    return -1;
+  struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
 
+  if (mmap_f == NULL) return false;
+
+  lock_acquire(&file_lock);
+
+  size_t offset;
+  void *cur_addr;
+
+  for (size_t i = 0; i < file_length(mmap_f->file); i++) {
+    offset = i * PGSIZE;
+    cur_addr = mmap_f->addr + offset;
+    size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
+  }
+}
+
+struct mmap_file*
+find_mmap_file(struct thread *t, mapid_t mapid) {
+  ASSERT (t != NULL);
+  struct list_elem *e;
+  if (! list_empty(&t->mmap_files)) {
+    for(e = list_begin(&t->mmap_files);
+        e != list_end(&t->mmap_files); e = list_next(e))
+    {
+      struct mmap_file *mmap_f = list_entry(e, struct mmap_file, mmap_elem);
+      if(mmap_f->id == mapid) {
+        return mmap_f;
+      }
+    }
+  }
+  return NULL;
 }

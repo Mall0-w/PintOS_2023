@@ -23,7 +23,7 @@ int seek( uint8_t* stack);             /*Handler for SYS_SEEK*/
 int tell( uint8_t* stack);             /*Handler for SYS_TELL*/
 int close( uint8_t* stack);             /*Handler for SYS_CLOSE*/
 mapid_t mmap( uint8_t* stack);             /*Handler for SYS_MMAP*/
-void munmap( uint8_t* stack);             /*Handler for SYS_MUNMAP*/
+bool munmap( uint8_t* stack);             /*Handler for SYS_MUNMAP*/
 
 /*Function that closes a file for a process, release filesys lock if release_lock is true*/
 void close_proc_file(struct process_file* f, bool release_lock);
