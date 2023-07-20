@@ -11,7 +11,6 @@ struct frame {
   uint32_t* pte;
   struct hash_elem hash_elem;
   struct thread* frame_thread;
-  bool pinned;
 };
 
 unsigned

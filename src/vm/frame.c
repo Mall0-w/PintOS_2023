@@ -57,10 +57,9 @@ bool add_frame_to_table(void* frame, struct thread* frame_thread){
     //insert into the frame table
     f->kernel_page_addr = frame;
     f->frame_thread = frame_thread;
-    f->pinned = false;
-   // lock_acquire(&frame_lock);
+    lock_acquire(&frame_lock);
     hash_insert(&frame_table, &f->hash_elem);
-   // lock_release(&frame_lock);    
+    lock_release(&frame_lock);    
 
     return true;
 }
@@ -84,9 +83,6 @@ struct frame* find_frame_to_evict(void){
         
         while (hash_next (&i)){
             struct frame *f = hash_entry(hash_cur (&i), struct frame, hash_elem);
-            //if frame is pinned ignore it
-            if(f->pinned)
-                continue;
             //check if page is accessed
             if(pagedir_is_accessed(f->frame_thread->pagedir, f->user_page_addr))
                 //if is, set it to false and continue
@@ -145,7 +141,7 @@ bool evict_frame(void){
     ASSERT(hash_size(&frame_table) > 0);
 
     //acquire lock for frame table
-    //lock_acquire(&frame_lock);
+    lock_acquire(&frame_lock);
     
     //get frame that we are supposed to evict
     struct frame* frame_to_evict = find_frame_to_evict();
@@ -161,7 +157,7 @@ bool evict_frame(void){
         PANIC("failed to save frame");
     
     deallocate_frame(frame_to_evict, false);
-    //lock_release(&frame_lock);
+    lock_release(&frame_lock);
 
     return true;
 }
@@ -176,7 +172,6 @@ frame_add (enum palloc_flags flags, struct thread* frame_thread) {
         return NULL;
     //check for PAL_ZERO and allocate accordingly (basically code)
     //that used to be in process.c
-    lock_acquire(&frame_lock);
     void* frame = NULL;
     if(flags & PAL_ZERO) {
         frame = palloc_get_page(PAL_USER | PAL_ZERO);
@@ -205,8 +200,6 @@ frame_add (enum palloc_flags flags, struct thread* frame_thread) {
     //add frame to frame table
     if(!add_frame_to_table(frame, frame_thread))
         PANIC("could not add frame to table");
-
-    lock_release(&frame_lock);
     return frame;
 }
 
