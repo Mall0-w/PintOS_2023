@@ -73,6 +73,35 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
     return NULL;
 }
 
+bool sup_page_cleanup(struct list* sup_pt_list){
+    struct list_elem *e;
+    lock_acquire(&sup_pt_lock);
+    while(!list_empty(sup_pt_list)){
+        e = list_pop_front(sup_pt_list);
+        struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
+        //if loaded, release the frame
+        if(spt->loaded){
+            void* frame = pagedir_get_page(thread_current()->pagedir, spt->upage);
+            if(frame == NULL){
+                lock_release(&sup_pt_lock);
+                return false;
+            }
+           struct frame* f = frame_get(f);
+           //only need to free f since pagedir_destory is called after, which frees all allocated pages
+           free(f);
+
+        }else{
+            //if not loaded check to see if its reserved in a swap slot
+            if(spt->type == SWAP_ORIGIN){
+                unlock_swap_slot(spt->swap_slot);
+            }
+        }
+        free(spt);    
+    }
+    lock_release(&sup_pt_lock);
+    return true;
+}
+
 bool
 sup_load_swap(struct sup_pt_list* spt){
     ASSERT(spt->type == SWAP_ORIGIN);

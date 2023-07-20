@@ -41,6 +41,8 @@ bool sup_load_file(struct sup_pt_list *spt);
 bool sup_load_swap(struct sup_pt_list *spt);
 bool sup_load_zero(struct sup_pt_list *spt);
 
+bool sup_page_cleanup(struct list* sup_pt_list);
+
 bool increase_stack_size(void* user_address, struct thread* t);
 
 #endif /* vm/page.h */

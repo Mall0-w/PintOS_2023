@@ -97,3 +97,10 @@ uint32_t num_sectors_in_page(void){
     //can use int since have to round down anyways
     return PGSIZE / BLOCK_SECTOR_SIZE;
 }
+
+void unlock_swap_slot(size_t swap_index){
+    ASSERT(bitmap_test(swap_map, swap_index));
+    lock_acquire(&swap_lock);
+    bitmap_flip(swap_map, swap_index);
+    lock_release(&swap_lock);
+}
