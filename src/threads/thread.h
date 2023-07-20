@@ -113,6 +113,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct hash spt;
+    struct lock spt_lock;
 #endif
 
     /* Owned by thread.c. */

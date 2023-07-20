@@ -17,4 +17,6 @@ uint32_t num_pages_in_swap(struct block* swap_block); /*function used to determi
 
 uint32_t num_sectors_in_page(void);  /*function used to determine the number of sectors in a page*/
 
+void swap_free_slot(size_t swap_slot);
+
 #endif /* vm/swap.h */

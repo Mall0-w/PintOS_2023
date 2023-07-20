@@ -16,8 +16,8 @@
 #include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "vm/page.h"
 #endif
-
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -228,6 +228,9 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  #ifdef USERPROG
+  init_sup_page_table(t);
+  #endif
   /* Add to run queue. */
   thread_unblock (t);
 

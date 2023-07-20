@@ -28,6 +28,7 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
+#include "vm/frame.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -36,6 +37,7 @@
 #include "devices/ide.h"
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
+#include "vm/swap.h"
 #endif
 
 /* Page directory with kernel mappings only. */
@@ -113,6 +115,7 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+  init_frame_table();
 #endif
 
   /* Start thread scheduler and enable interrupts. */
@@ -125,6 +128,7 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+  init_swap();
 #endif
 
   printf ("Boot complete.\n");

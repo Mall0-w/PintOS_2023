@@ -3,6 +3,7 @@
 
 #include "threads/thread.h"
 #include "kernel/hash.h"
+#include "threads/palloc.h"
 
 struct frame{
     void* kernel_page_addr;
@@ -21,13 +22,17 @@ bool
 frame_less (const struct hash_elem *a_, const struct hash_elem *b_,
            void *aux); /*comparioson function used for frame table*/
 
-bool allocate_frame(void* kernel_page); /*function used to allocate a frame and add to frame table*/
+void* allocate_frame(enum palloc_flags flags); /*function used to allocate a frame and add to frame table*/
 
 bool free_frame(void* kernel_page); /*function used to free a frame*/
 
 struct frame* find_frame(void* kernel_page);
 
-bool deallocate_frame(struct frame* f); /*function used to deallocate a frame*/
+bool add_frame_to_table(void* kernel_addr);
+
+bool free_frame(void* address);
+
+void deallocate_frame(struct frame* f, bool use_locks); /*function used to deallocate a frame*/
 
 bool evict_frame(void);
 

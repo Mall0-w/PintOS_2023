@@ -1,5 +1,5 @@
-#ifndef VM_FRAME_H
-#define VM_FRAME_H
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
 
 #include "threads/thread.h"
 #include "filesys/file.h"
@@ -38,10 +38,12 @@ page_less (const struct hash_elem *a_, const struct hash_elem *b_,
 
 void init_sup_page_table(struct thread* t); /*Function used to initalize supplementary page table*/
 
-bool sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
-void sup_pt_remove(struct list *sup_pt_list, void *upage); // Delete an entry from the supplemental page table
-struct sup_page *sup_pt_find(struct list *sup_pt_list, void *upage); // Find an entry in the supplemental page table
-
+bool allocate_sup_pt(struct thread* t, enum page_type type, void *upage, struct file *file, off_t offset, bool writable, size_t read_bytes, size_t zero_bytes); // Add a new entry to the supplemental page table
+bool free_sup_page(struct thread* t, void *upage); // Delete an entry from the supplemental page table
+void free_entire_sup(struct thread* t);
+struct sup_page* find_page(struct thread* t, void *upage); // Find an entry in the supplemental page table
+struct sup_page* find_page_without_locks(struct thread* t, void* upage);
+void free_pte(struct hash_elem *e, void* aux UNUSED);
 /* Getting the information from previous pages (file, swap, etc)*/
 bool sup_load_file(struct sup_page *spt);
 bool sup_load_swap(struct sup_page *spt);
@@ -50,4 +52,4 @@ bool sup_load_zero(struct sup_page *spt);
 bool increase_stack_size(void* user_address, struct thread* t);
 
 
-#endif /* vm/frame.h */
+#endif /* vm/page.h */

@@ -32,6 +32,63 @@ void init_swap(void){
     bitmap_set_all(swap_map, false);
 }
 
+void swap_free_slot(size_t swap_slot){
+    bitmap_flip(swap_map, swap_slot);
+}
+
+/*function used to swap page into swap slot
+returns index in swap table or BITMAP_ERROR if there
+are no free swap slots*/
+size_t page_swap_in(void* page_address){
+    //acquire lock for the swap
+    lock_acquire(&swap_lock);
+    //find an open index and flip it to claim it
+    size_t bitmap_index = bitmap_scan_and_flip(swap_map, 0, 1, false);
+
+    //if not found, return the error
+    if(bitmap_index == BITMAP_ERROR){
+        lock_release(&swap_lock);
+        return BITMAP_ERROR;
+    }
+    //write to the different sectors of the bitmap
+    uint32_t num_sectors = num_sectors_in_page();
+    for(uint32_t i = 0; i < num_sectors; i++){
+        //writing to each sector
+        block_write(swap_block, (bitmap_index * num_sectors) + i, page_address + (i * BLOCK_SECTOR_SIZE));
+    }
+
+    //release lock
+    lock_release(&swap_lock);
+    //return index to update supplementary page table
+    return bitmap_index;
+}
+
+/*function used to write from swap slot swap_index into page_address*/
+void page_swap_out(size_t swap_index, void* page_address){
+    //acquire lock for swapp
+    lock_acquire(&swap_lock);
+
+    //check that the bitmap swap is actually filled
+    if(!bitmap_test(swap_map, swap_index)){
+        lock_release(&swap_lock);
+        PANIC("Tried to read from empty swap slot");
+        return;
+    }
+
+    //read sectors from swap block
+    uint32_t num_sectors = num_sectors_in_page();
+    for(uint32_t i = 0; i < num_sectors; i++){
+        block_read(swap_block, (swap_index * num_sectors) + i, page_address + (i * BLOCK_SECTOR_SIZE));
+    }
+
+    //now that we have read from swap slot, mark it as empty
+    bitmap_flip(swap_map, swap_index);
+    //release lock
+    lock_release(&swap_lock);
+
+    return;
+}
+
 /*function used to determine the number of pages in a swap*/
 uint32_t num_pages_in_swap(struct block* swap_block){
     //divide number of sectors in swap by num sectors in a page

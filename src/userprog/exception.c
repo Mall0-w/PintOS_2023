@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -110,6 +111,12 @@ kill (struct intr_frame *f)
     }
 }
 
+/*function used to determine if page fault qualifies for stack growth*/
+static bool qualifies_stack_growth(void* addr, struct intr_frame* f){
+  return addr >= (f->esp - ABOVE_STACK_LIMIT) && 
+	   (PHYS_BASE - pg_round_down (addr)) <= MAX_STACK_SIZE;
+}
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -150,17 +157,33 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if(user)
-   proc_exit(-1);
+   if(fault_addr == NULL || !not_present || !is_user_vaddr(fault_addr))
+    proc_exit (-1);
 
-  /* To implement virtual memory, delete the rest of the function
+   struct thread* t = thread_current();
+   struct sup_page* spt = find_page(t, fault_addr);
+
+   if(spt != NULL && !spt->loaded){
+      if(spt->type == FILE_ORIGIN){
+         if(!sup_load_file(spt))
+            PANIC("failed to load file");
+      }
+      else{
+         PANIC("file type for spt not implemented");
+      }
+   }else if(spt == NULL && qualifies_stack_growth(fault_addr, f)){
+      if(!increase_stack_size(fault_addr,t))
+         PANIC("failed to increase stack size");
+   }else{
+      /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+   kill (f);
+   }
 }
 
