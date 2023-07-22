@@ -73,6 +73,38 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
     return NULL;
 }
 
+bool sup_page_cleanup(struct list* sup_pt_list){
+    struct list_elem *e;
+    if(list_size(sup_pt_list) == 0)
+        return true;
+
+    lock_acquire(&sup_pt_lock);
+    while(!list_empty(sup_pt_list)){
+        e = list_pop_front(sup_pt_list);
+        struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
+        //if loaded, release the frame
+        if(spt->loaded){
+            void* frame = pagedir_get_page(thread_current()->pagedir, spt->upage);
+            if(frame == NULL){
+                lock_release(&sup_pt_lock);
+                return false;
+            }
+           struct frame* f = frame_get(f);
+           //only need to free f since pagedir_destory is called after, which frees all allocated pages
+           free(f);
+
+        }else{
+            //if not loaded check to see if its reserved in a swap slot
+            if(spt->type == SWAP_ORIGIN){
+                unlock_swap_slot(spt->swap_slot);
+            }
+        }
+        free(spt);    
+    }
+    lock_release(&sup_pt_lock);
+    return true;
+}
+
 bool
 sup_load_swap(struct sup_pt_list* spt){
     ASSERT(spt->type == SWAP_ORIGIN);
@@ -158,6 +190,16 @@ sup_load_zero(struct sup_pt_list* spt){
 
 bool increase_stack_size(void* user_address, struct thread* t){
     /*allocating a frame for the stack, using same flags for original stack frame*/
+    // if(!sup_pt_insert(&t->spt, ZERO_ORIGIN, pg_round_down(user_address), NULL, 0, true, 0, PGSIZE)) {
+    //     return false;
+    // }
+    // struct sup_pt_list* spt_entry = sup_pt_find(&t->spt, pg_round_down(user_address));
+
+    // if(!sup_load_zero(spt_entry)) {
+    //     return false;
+    // }
+
+
     void* frame = frame_add(PAL_USER | PAL_ZERO, t);
     if(frame == NULL)
         return false;

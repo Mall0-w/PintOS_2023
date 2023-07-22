@@ -127,6 +127,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interrupt_number;
+  thread_current()->curr_esp = f->esp;
   
   // Check if the 4 bytes is in user virtual address space and has an existing
   // page associated with it, if all good put it in interrupt_number
@@ -347,7 +348,7 @@ int read(uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
 
-  if(!valid_esp((void*)buffer, 0)) {
+  if((!is_user_vaddr(buffer) || buffer == NULL)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
