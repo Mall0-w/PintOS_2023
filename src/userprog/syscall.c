@@ -281,6 +281,7 @@ int open(uint8_t* stack){
   lock_acquire(&file_lock);
   struct file* f = filesys_open(file_name);
   if(f == NULL){
+    lock_release(&file_lock);
     return -1;
   }
   bool is_exe = is_file_exe(f);
@@ -529,7 +530,7 @@ int mmap(uint8_t* stack) {
     return -1;
 
   // Checks if the buffer goes into unmapped memory
-  if(fd == 0 || fd == 1) {
+  if(fd == 0 || fd == 1 || addr == NULL || pg_ofs(addr) != 0) {
     return -1;
   }
 
@@ -552,15 +553,11 @@ int mmap(uint8_t* stack) {
   for (size_t i = 0; i < file_length(f); i++) {
     offset = i * PGSIZE;
     cur_addr = addr + offset;
+
     if (sup_pt_find(&cur->spt, cur_addr)) {
       lock_release(&file_lock);
       return -1;
     }
-  }
-
-  for (size_t i = 0; i < file_length(f); i++) {
-    offset = i * PGSIZE;
-    cur_addr = addr + offset;
     
     size_t page_read_bytes = PGSIZE < file_length(f) - offset ? PGSIZE : file_length(f) - offset;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
@@ -596,6 +593,7 @@ munmap(uint8_t* stack) {
 int 
 munmap_helper(mapid_t mapid) {
   struct thread *cur = thread_current();
+
   struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
 
   if (mmap_f == NULL) return -1;
@@ -626,6 +624,7 @@ munmap_helper(mapid_t mapid) {
   file_close(mmap_f->file);
   free(mmap_f);
   lock_release(&file_lock);
+  
   return 1;
 }
 
