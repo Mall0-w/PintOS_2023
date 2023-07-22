@@ -57,6 +57,7 @@ bool add_frame_to_table(void* frame, struct thread* frame_thread){
     //insert into the frame table
     f->kernel_page_addr = frame;
     f->frame_thread = frame_thread;
+    f->pinned = false;
     lock_acquire(&frame_lock);
     hash_insert(&frame_table, &f->hash_elem);
     lock_release(&frame_lock);    
@@ -83,6 +84,9 @@ struct frame* find_frame_to_evict(void){
         
         while (hash_next (&i)){
             struct frame *f = hash_entry(hash_cur (&i), struct frame, hash_elem);
+
+            if(f->pinned)
+                continue;
             //check if page is accessed
             if(pagedir_is_accessed(f->frame_thread->pagedir, f->user_page_addr))
                 //if is, set it to false and continue
@@ -225,7 +229,11 @@ void
 frame_free (void* address) {
     //get frame
     struct frame* f = frame_get(address);
-    deallocate_frame(f, true);
+    if(f != NULL)
+        deallocate_frame(f, true);
+    else
+        palloc_free_page(address);
+    return;
 }
 
 /*function used to deallocate frame*/

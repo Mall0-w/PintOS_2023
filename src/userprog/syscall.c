@@ -340,7 +340,7 @@ int read(uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
 
-  if(!valid_esp((void*)buffer, 0)) {
+  if((!is_user_vaddr(buffer) || buffer == NULL)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);

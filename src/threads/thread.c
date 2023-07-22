@@ -966,6 +966,8 @@ struct child_process*
 find_child_from_id(tid_t tid, struct list *child_processes)
 {
   struct list_elem* e;
+  if(list_size(child_processes) <= 0)
+    return NULL;
   for (e = list_begin (child_processes); e != list_end (child_processes); e = list_next (e))
   {
     struct child_process *child = list_entry (e, struct child_process, child_elem);
