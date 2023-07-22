@@ -121,6 +121,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interrupt_number;
+  thread_current()->curr_esp = f->esp;
   
   // Check if the 4 bytes is in user virtual address space and has an existing
   // page associated with it, if all good put it in interrupt_number
@@ -275,6 +276,7 @@ int open(uint8_t* stack){
   lock_acquire(&file_lock);
   struct file* f = filesys_open(file_name);
   if(f == NULL){
+    lock_release(&file_lock);
     return -1;
   }
   bool is_exe = is_file_exe(f);

@@ -190,6 +190,16 @@ sup_load_zero(struct sup_pt_list* spt){
 
 bool increase_stack_size(void* user_address, struct thread* t){
     /*allocating a frame for the stack, using same flags for original stack frame*/
+    // if(!sup_pt_insert(&t->spt, ZERO_ORIGIN, pg_round_down(user_address), NULL, 0, true, 0, PGSIZE)) {
+    //     return false;
+    // }
+    // struct sup_pt_list* spt_entry = sup_pt_find(&t->spt, pg_round_down(user_address));
+
+    // if(!sup_load_zero(spt_entry)) {
+    //     return false;
+    // }
+
+
     void* frame = frame_add(PAL_USER | PAL_ZERO, t);
     if(frame == NULL)
         return false;
