@@ -15,6 +15,9 @@
 #include "devices/input.h"
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(uint8_t* stack) = {
@@ -30,7 +33,9 @@ static int (*handlers[])(uint8_t* stack) = {
   [SYS_WRITE]write,
   [SYS_SEEK]seek,
   [SYS_TELL]tell,
-  [SYS_CLOSE]close
+  [SYS_CLOSE]close,
+  [SYS_MMAP]mmap,
+  [SYS_MUNMAP]munmap
 };
 
 /*Lock used to handle filesys concurrency*/
@@ -41,6 +46,7 @@ struct lock error_lock;
 bool raised_error = false;
 
 static void syscall_handler (struct intr_frame *);
+struct mmap_file* find_mmap_file(struct thread *t, mapid_t mapid);
 
 
 void
@@ -511,4 +517,131 @@ void close_proc_file(struct process_file* f, bool release_lock){
   if(release_lock)
     lock_release(&file_lock);
   return;
+}
+
+int mmap(uint8_t* stack) {
+  struct thread *cur = thread_current();
+  int fd;
+  void *addr;
+  uint8_t* curr_pos = stack;
+  if(!copy_in(&fd, curr_pos, sizeof(int)))
+    return -1;
+  curr_pos += sizeof(int);
+  if(!copy_in(&addr, curr_pos, sizeof(void*)))
+    return -1;
+
+  // Checks if the buffer goes into unmapped memory
+  if(fd == 0 || fd == 1 || addr == NULL || pg_ofs(addr) != 0) {
+    return -1;
+  }
+
+  lock_acquire(&file_lock);
+
+  struct file *f = NULL;
+  struct process_file *pf = find_file(cur, fd);
+  if (pf && pf->file) {
+    f = file_reopen(pf->file);
+  }
+
+  if(f == NULL || file_length(f) == 0){
+    lock_release(&file_lock);
+    return -1;
+  }
+
+  size_t offset;
+  void *cur_addr;
+
+  for (size_t i = 0; i < file_length(f); i++) {
+    offset = i * PGSIZE;
+    cur_addr = addr + offset;
+
+    if (sup_pt_find(&cur->spt, cur_addr)) {
+      lock_release(&file_lock);
+      return -1;
+    }
+    
+    size_t page_read_bytes = PGSIZE < file_length(f) - offset ? PGSIZE : file_length(f) - offset;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    sup_pt_insert(&cur->spt, FILE_ORIGIN, cur_addr, f, offset, true, page_read_bytes, page_zero_bytes);
+  }
+  
+  mapid_t mapid;
+  if (!list_empty(&cur->mmap_files)) {
+    mapid = list_entry(list_back(&cur->mmap_files), struct mmap_file, mmap_elem)->id + 1;
+  } else {
+    mapid = 1;
+  }
+
+  struct mmap_file *mmap_f = (struct mmap_file *) malloc(sizeof(struct mmap_file));
+  mmap_f->id = mapid;
+  mmap_f->file = f;
+  mmap_f->addr = addr;
+  list_push_back(&cur->mmap_files, &mmap_f->mmap_elem);
+
+  lock_release(&file_lock);
+  return mapid;
+}
+
+int 
+munmap(uint8_t* stack) {
+  mapid_t mapid;
+  if(!copy_in(&mapid, stack, sizeof(int)))
+    return -1;
+  return munmap_helper(mapid);
+}
+
+int 
+munmap_helper(mapid_t mapid) {
+  struct thread *cur = thread_current();
+
+  struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
+
+  if (mmap_f == NULL) return -1;
+
+  lock_acquire(&file_lock);
+
+  size_t offset;
+  void *cur_addr;
+  struct sup_pt_list *cur_spt_entry;
+
+  for (size_t i = 0; i < file_length(mmap_f->file); i++) {
+    offset = i * PGSIZE;
+    cur_addr = mmap_f->addr + offset;
+    size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
+    cur_spt_entry = sup_pt_find(&cur->spt, cur_addr);
+    if (cur_spt_entry->loaded) {
+      if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage) ||
+          pagedir_is_dirty(cur->pagedir, pagedir_get_page(cur->pagedir, cur_spt_entry->upage))) {
+        file_write_at(mmap_f->file, cur_spt_entry->upage, page_read_bytes, offset);
+      }
+      frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
+      pagedir_clear_page(cur->pagedir, cur_spt_entry->upage);
+    }
+    sup_pt_remove(&cur->spt, cur_addr);
+  }
+
+  list_remove(&mmap_f->mmap_elem);
+  file_close(mmap_f->file);
+  free(mmap_f);
+  lock_release(&file_lock);
+  
+  return 1;
+}
+
+struct mmap_file*
+find_mmap_file(struct thread *t, mapid_t mapid) {
+  ASSERT (t != NULL);
+  struct list_elem *e;
+  if (!list_empty(&t->mmap_files)) {
+    for(e = list_begin(&t->mmap_files);
+        e != list_end(&t->mmap_files); e = list_next(e))
+    {
+      struct mmap_file *mmap_f = list_entry(e, struct mmap_file, mmap_elem);
+      if(mmap_f->id == mapid) {
+        return mmap_f;
+      }
+    }
+  }
+  return NULL;
 }

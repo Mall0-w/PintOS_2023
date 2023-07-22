@@ -176,9 +176,12 @@ process_exit (void)
     struct process_file* f = list_entry(e, struct process_file, elem);
     close_proc_file(f, true);
   }
-  
-  sup_page_cleanup(&cur->spt);
 
+  while (!list_empty(&cur->mmap_files)) {
+    struct mmap_file *mmap_f = list_entry(list_begin(&cur->mmap_files), struct mmap_file, mmap_elem);
+    munmap_helper(mmap_f->id);
+  }
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

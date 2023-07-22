@@ -11,6 +11,12 @@
 #define ABOVE_STACK_LIMIT 32
 /*max stack size (8MB)*/
 #define MAX_STACK_SIZE 8388608
+#include "threads/thread.h"
+
+/*the limit above the stack to start considering*/
+#define ABOVE_STACK_LIMIT 32
+/*max stack size (8MB)*/
+#define MAX_STACK_SIZE 8388608
 
 enum page_type {
     FILE_ORIGIN, // File
