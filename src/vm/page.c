@@ -75,6 +75,9 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
 
 bool sup_page_cleanup(struct list* sup_pt_list){
     struct list_elem *e;
+    if(list_size(sup_pt_list) == 0)
+        return true;
+
     lock_acquire(&sup_pt_lock);
     while(!list_empty(sup_pt_list)){
         e = list_pop_front(sup_pt_list);

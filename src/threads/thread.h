@@ -114,7 +114,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct list spt;         /* Supplemental page table */
-    struct frame* stack_frame;
+    //struct frame* stack_frame;
 
 #endif
 

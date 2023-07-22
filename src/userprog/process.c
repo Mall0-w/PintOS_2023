@@ -168,7 +168,8 @@ process_exit (void)
   free_children(&cur->child_processes);
 
   cur->parent = NULL;
-  cur->stack_frame->pinned = false;
+  // if(cur->stack_frame)
+  //   cur->stack_frame->pinned = false;
   
   while(!list_empty(&cur->opened_files)){
     struct list_elem* e = list_pop_front(&cur->opened_files);
@@ -544,7 +545,7 @@ setup_stack (int argc, char* argv[], void **esp)
   //pin thes stack, can unpin it after
   struct frame* f = pagedir_get_page(t->pagedir, spt_entry->upage);
   f->pinned = true;
-  t->stack_frame = f;
+  //t->stack_frame = f;
 
   *esp = PHYS_BASE;
   char* arg_pointers[argc];
