@@ -362,13 +362,19 @@ int read(uint8_t* stack){
   }
 
   //acquire lock, find file and read
+  struct thread* t = thread_current();
+
   lock_acquire(&file_lock);
-  struct process_file* f = find_file(thread_current(), fd);
+  struct process_file* f = find_file(t, fd);
   if(f == NULL){
     lock_release(&file_lock);
     return -1;
   }
+
+  struct frame* mem_frame = frame_get(pagedir_get_page(t->pagedir, pg_round_down(stack)));
+  mem_frame->pinned = true;
   int read_size = file_read(f->file, buffer, (off_t) size);
+  mem_frame->pinned = false;
   lock_release(&file_lock);
   return read_size;
 }
@@ -407,12 +413,15 @@ int write(uint8_t* stack){
   }
   //acquire lock for filesys and find file
   lock_acquire(&file_lock);
-  struct process_file* f = find_file(thread_current(), fd);
+  struct thread* t = thread_current();
+  struct process_file* f = find_file(t, fd);
   if(f == NULL){
     lock_release(&file_lock);
     return -1;
   }
 
+  struct frame* mem_frame = frame_get(pagedir_get_page(t->pagedir, pg_round_down(stack)));
+  mem_frame->pinned = true;
   int write_size = 0;
   if(is_file_exe(f->file)){
     //if file is an executable, check if what we're writing will change 
@@ -426,7 +435,7 @@ int write(uint8_t* stack){
     //write to file, then release lock
     write_size = (int)file_write(f->file, buffer, size);
   }
-
+  mem_frame->pinned = false;
   lock_release(&file_lock);
   return write_size;
   
@@ -551,7 +560,7 @@ int mmap(uint8_t* stack) {
   size_t offset;
   void *cur_addr;
 
-  for (size_t i = 0; i < file_length(f); i++) {
+  for (int i = 0; i < file_length(f); i++) {
     offset = i * PGSIZE;
     cur_addr = addr + offset;
 
@@ -605,7 +614,7 @@ munmap_helper(mapid_t mapid) {
   void *cur_addr;
   struct sup_pt_list *cur_spt_entry;
 
-  for (size_t i = 0; i < file_length(mmap_f->file); i++) {
+  for (int i = 0; i < file_length(mmap_f->file); i++) {
     offset = i * PGSIZE;
     cur_addr = mmap_f->addr + offset;
     size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
