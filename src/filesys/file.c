@@ -112,9 +112,12 @@ off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
                off_t file_ofs) 
 {
-  lock_acquire(&fs_lock);
+  bool lock_toggle = lock_held_by_current_thread(&fs_lock);
+  if(!lock_toggle)
+    lock_acquire(&fs_lock);
   off_t res = inode_write_at (file->inode, buffer, size, file_ofs);
-  lock_release(&fs_lock);
+  if(!lock_toggle)
+    lock_release(&fs_lock);
   return res;
 }
 
