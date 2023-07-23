@@ -110,10 +110,13 @@ struct thread
     struct thread* parent;
     int exit_code;
 
+    struct list spt;         /* Supplemental page table */
+    struct list mmap_files;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct list spt;         /* Supplemental page table */
+    void *curr_esp;                         /* Stack pointer */
     //struct frame* stack_frame;
 
 #endif
@@ -130,6 +133,15 @@ struct thread
    int exit_code;                           /* exit code for a process*/
    struct thread *t;                        /* thread corresponding to child process*/
    struct list_elem child_elem;           /*elem used in list of child processes*/
+  };
+
+  typedef int mapid_t;
+
+  struct mmap_file {
+   mapid_t id;
+   struct file *file;
+   void *addr;
+   struct list_elem mmap_elem;
   };
 
 /* If false (default), use round-robin scheduler.
