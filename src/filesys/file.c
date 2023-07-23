@@ -2,6 +2,8 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
+#include "filesys/filesys.h"
 
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
@@ -9,18 +11,21 @@
 struct file *
 file_open (struct inode *inode) 
 {
+  lock_acquire(&fs_lock);
   struct file *file = calloc (1, sizeof *file);
   if (inode != NULL && file != NULL)
     {
       file->inode = inode;
       file->pos = 0;
       file->deny_write = false;
+      lock_release(&fs_lock);
       return file;
     }
   else
     {
       inode_close (inode);
       free (file);
+      lock_release(&fs_lock);
       return NULL; 
     }
 }
@@ -39,9 +44,11 @@ file_close (struct file *file)
 {
   if (file != NULL)
     {
+      lock_acquire(&fs_lock);
       file_allow_write (file);
       inode_close (file->inode);
       free (file); 
+      lock_release(&fs_lock);
     }
 }
 
@@ -73,7 +80,10 @@ file_read (struct file *file, void *buffer, off_t size)
 off_t
 file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) 
 {
-  return inode_read_at (file->inode, buffer, size, file_ofs);
+  lock_acquire(&fs_lock);
+  off_t res = inode_read_at (file->inode, buffer, size, file_ofs);
+  lock_release(&fs_lock);
+  return res;
 }
 
 /* Writes SIZE bytes from BUFFER into FILE,
@@ -102,7 +112,10 @@ off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
                off_t file_ofs) 
 {
-  return inode_write_at (file->inode, buffer, size, file_ofs);
+  lock_acquire(&fs_lock);
+  off_t res = inode_write_at (file->inode, buffer, size, file_ofs);
+  lock_release(&fs_lock);
+  return res;
 }
 
 /* Prevents write operations on FILE's underlying inode
