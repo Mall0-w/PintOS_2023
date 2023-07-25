@@ -531,6 +531,8 @@ int mmap(uint8_t* stack) {
   struct thread *cur = thread_current();
   int fd;
   void *addr;
+
+  // Copy in arguments
   uint8_t* curr_pos = stack;
   if(!copy_in(&fd, curr_pos, sizeof(int)))
     return -1;
@@ -538,19 +540,18 @@ int mmap(uint8_t* stack) {
   if(!copy_in(&addr, curr_pos, sizeof(void*)))
     return -1;
 
-  // Checks if the buffer goes into unmapped memory
+  // Check for invalid arguments
   if(fd == 0 || fd == 1 || addr == NULL || pg_ofs(addr) != 0) {
     return -1;
   }
 
+  // Acquire file lock and find file
   lock_acquire(&file_lock);
-
   struct file *f = NULL;
   struct process_file *pf = find_file(cur, fd);
   if (pf && pf->file) {
     f = file_reopen(pf->file);
   }
-
   if(f == NULL || file_length(f) == 0){
     lock_release(&file_lock);
     return -1;
@@ -559,10 +560,12 @@ int mmap(uint8_t* stack) {
   size_t offset;
   void *cur_addr;
 
+  // Map each page to suplementary page table
   for (int i = 0; i < file_length(f); i++) {
     offset = i * PGSIZE;
     cur_addr = addr + offset;
 
+    // Make sure each page address doesn't exist yet
     if (sup_pt_find(&cur->spt, cur_addr)) {
       lock_release(&file_lock);
       return -1;
@@ -574,6 +577,7 @@ int mmap(uint8_t* stack) {
     sup_pt_insert(&cur->spt, FILE_ORIGIN, cur_addr, f, offset, true, page_read_bytes, page_zero_bytes);
   }
   
+  // Create a mapid for the file
   mapid_t mapid;
   if (!list_empty(&cur->mmap_files)) {
     mapid = list_entry(list_back(&cur->mmap_files), struct mmap_file, mmap_elem)->id + 1;
@@ -581,12 +585,14 @@ int mmap(uint8_t* stack) {
     mapid = 1;
   }
 
+  // Create mmap file and add it to threads mmap file list
   struct mmap_file *mmap_f = (struct mmap_file *) malloc(sizeof(struct mmap_file));
   mmap_f->id = mapid;
   mmap_f->file = f;
   mmap_f->addr = addr;
   list_push_back(&cur->mmap_files, &mmap_f->mmap_elem);
 
+  // Release lock and return mapid
   lock_release(&file_lock);
   return mapid;
 }
@@ -603,40 +609,57 @@ int
 munmap_helper(mapid_t mapid) {
   struct thread *cur = thread_current();
 
+  // Find the mmap file corresponding to mapid
   struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
 
   if (mmap_f == NULL) return -1;
 
+  // Acquire file lock
   lock_acquire(&file_lock);
 
   size_t offset;
   void *cur_addr;
   struct sup_pt_list *cur_spt_entry;
 
+  // Iterate through each page and unmap them
   for (int i = 0; i < file_length(mmap_f->file); i++) {
     offset = i * PGSIZE;
     cur_addr = mmap_f->addr + offset;
     size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
+
+    // Get corresponding supplementary page table entry
     cur_spt_entry = sup_pt_find(&cur->spt, cur_addr);
+
     if (cur_spt_entry->loaded) {
+      void *kpage = pagedir_get_page(cur->pagedir, cur_spt_entry->upage);
+      ASSERT (kpage != NULL);
+
+      // Check if the upage or kpage is dirty and write to file if so.
       if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage) ||
-          pagedir_is_dirty(cur->pagedir, pagedir_get_page(cur->pagedir, cur_spt_entry->upage))) {
+          pagedir_is_dirty(cur->pagedir, kpage)) {
         file_write_at(mmap_f->file, cur_spt_entry->upage, page_read_bytes, offset);
       }
-      frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
+      // Free frame and clear page
+      frame_free(kpage);
       pagedir_clear_page(cur->pagedir, cur_spt_entry->upage);
     }
+
+    // Remove entry from suplementary page table
     sup_pt_remove(&cur->spt, cur_addr);
   }
 
+  // Free all mmap file resources
   list_remove(&mmap_f->mmap_elem);
   file_close(mmap_f->file);
   free(mmap_f);
+
+  // Release file lock and return
   lock_release(&file_lock);
-  
   return 1;
 }
 
+/*Function used to find a mmap_file of given mapid under thread
+  returns NULL if no such file exists*/
 struct mmap_file*
 find_mmap_file(struct thread *t, mapid_t mapid) {
   ASSERT (t != NULL);
