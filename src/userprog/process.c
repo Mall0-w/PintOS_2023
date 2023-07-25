@@ -150,8 +150,6 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  // int list_len = list_size(&cur->opened_files);
-  // bool empty = list_empty(&cur->opened_files);
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
   /*call close on all of the process' files*/
 
@@ -168,8 +166,6 @@ process_exit (void)
   free_children(&cur->child_processes);
 
   cur->parent = NULL;
-  // if(cur->stack_frame)
-  //   cur->stack_frame->pinned = false;
   
   while(!list_empty(&cur->opened_files)){
     struct list_elem* e = list_pop_front(&cur->opened_files);
@@ -429,10 +425,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   return success;
 }
-
-/* load() helpers. */
-
-static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -504,7 +496,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   struct thread *t = thread_current ();
 
   // Don't need to seek file since we are getting it lazily
-  //file_seek (file, ofs);
   // When seeking from different parts of the file, we need to
   // find the correct offset when seeking from the file
 
@@ -548,7 +539,6 @@ setup_stack (int argc, char* argv[], void **esp)
   //pin thes stack, can unpin it after
   struct frame* f = pagedir_get_page(t->pagedir, spt_entry->upage);
   f->pinned = true;
-  //t->stack_frame = f;
 
   *esp = PHYS_BASE;
   char* arg_pointers[argc];
@@ -601,26 +591,6 @@ struct process_file* find_file(struct thread* t, int fd){
       return curr_file;
   }
   return NULL;
-}
-
-/* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
-static bool
-install_page (void *upage, void *kpage, bool writable)
-{
-  struct thread *t = thread_current ();
-
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
 
 /*Function used to determine a file f is an executable*/

@@ -30,7 +30,6 @@ sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct
     struct sup_pt_list *spt = malloc(sizeof(struct sup_pt_list));
     if(spt == NULL)
         return false;
-    //printf("\n\nINSERTING UPAGE: %p\n\n", upage);
     spt->type = type;
     spt->upage = upage;
     spt->file = file;
@@ -64,8 +63,6 @@ sup_pt_find(struct list *sup_pt_list, void *upage) {
     struct list_elem *e;
     for (e = list_begin(sup_pt_list); e != list_end(sup_pt_list); e = list_next(e)) {
         struct sup_pt_list *spt = list_entry(e, struct sup_pt_list, elem);
-        //printf("sup_pt_find: %p\n", spt->upage);
-        //printf("curr spt pointer: %p\n", spt);
         if (spt->upage == upage) {
             return spt;
         }
@@ -128,15 +125,22 @@ sup_load_swap(struct sup_pt_list* spt){
     return true;
 }
 
+/* Adds a mapping from UPAGE from spt entry to kernel
+   virtual address KPAGE to the page table.
+   If WRITABLE is true, the user process may modify the page;
+   otherwise, it is read-only.
+   UPAGE must not already be mapped.
+   KPAGE should probably be a page obtained from the user pool
+   with palloc_get_page().
+   Returns true on success, false if UPAGE is already mapped or
+   if memory allocation fails. */
 bool
 sup_load_file(struct sup_pt_list* spt){
     ASSERT(spt->loaded == false);
     
     file_seek(spt->file, spt->offset);
-    //printf("Seeking FILE with upage and offset: %p, %d\n", spt->upage, spt->offset);
     /* Get a page of memory. */
     uint8_t* kpage = frame_add (PAL_USER, thread_current());
-    //uint8_t* kpage = palloc_get_page (PAL_USER);
     if (kpage == NULL) {
         return false;
     }
@@ -166,7 +170,6 @@ sup_load_file(struct sup_pt_list* spt){
 bool
 sup_load_zero(struct sup_pt_list* spt){
     ASSERT(spt->loaded == false);
-    //printf("Seeking ZERO with upage and offset: %p, %d\n", spt->upage, spt->offset);
     /* Get a page of memory. */
     uint8_t* kpage = frame_add (PAL_USER | PAL_ZERO, thread_current());
     if (kpage == NULL) {
@@ -189,17 +192,6 @@ sup_load_zero(struct sup_pt_list* spt){
 }
 
 bool increase_stack_size(void* user_address, struct thread* t){
-    /*allocating a frame for the stack, using same flags for original stack frame*/
-    // if(!sup_pt_insert(&t->spt, ZERO_ORIGIN, pg_round_down(user_address), NULL, 0, true, 0, PGSIZE)) {
-    //     return false;
-    // }
-    // struct sup_pt_list* spt_entry = sup_pt_find(&t->spt, pg_round_down(user_address));
-
-    // if(!sup_load_zero(spt_entry)) {
-    //     return false;
-    // }
-
-
     void* frame = frame_add(PAL_USER | PAL_ZERO, t);
     if(frame == NULL)
         return false;

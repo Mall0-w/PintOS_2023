@@ -20,8 +20,6 @@ void init_swap(void){
     }
     //init lock for managing swap table
     lock_init(&swap_lock);
-    //init bitmap
-    //size should be
 
     //create a bitmap with a bit for each page
     swap_map = bitmap_create(num_pages_in_swap(swap_block));
@@ -74,6 +72,7 @@ void page_swap_out(size_t swap_index, void* page_address){
     //read sectors from swap block
     uint32_t num_sectors = num_sectors_in_page();
     for(uint32_t i = 0; i < num_sectors; i++){
+        //read from sector (by offsetting by sectors and swap slot)
         block_read(swap_block, (swap_index * num_sectors) + i, page_address + (i * BLOCK_SECTOR_SIZE));
     }
 

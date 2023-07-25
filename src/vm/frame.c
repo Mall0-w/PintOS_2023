@@ -114,7 +114,6 @@ bool save_frame(struct frame* f){
     //if dirty or designated to go into swap slot, swap into swap slot
     if(pagedir_is_dirty(f->frame_thread->pagedir, f->user_page_addr) || spte->type == SWAP_ORIGIN){
         //if dirty, need to load to a swap slot
-        //printf("loading to swap slot");
         //find an empty swap_index and dump page into it
         size_t swap_index = page_swap_in(f->user_page_addr);
         if(swap_index == BITMAP_ERROR){
@@ -124,7 +123,6 @@ bool save_frame(struct frame* f){
         //update index and sup page table details
         spte->swap_slot = swap_index;
         spte->type = SWAP_ORIGIN;
-        spte->writable = *(f->pte) & PTE_W;
     }
     //NOTE if it wasn't dirty then we can just reread it from the exe
     //which is compltley possible if type remains FILE_ORIGIN
@@ -197,8 +195,6 @@ frame_add (enum palloc_flags flags, struct thread* frame_thread) {
         else {
             frame = palloc_get_page(PAL_USER);
         }
-        //PANIC("Not enough room to allocate frame");
-        //would hypothetically evict frame here since there's not enough space for it
     }
 
     //add frame to frame table

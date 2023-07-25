@@ -195,11 +195,7 @@ page_fault (struct intr_frame *f)
          // Load the page from the swap
          if(!sup_load_swap(spf))
             proc_exit(-1);
-      }
-      else if(spf->type == ZERO_ORIGIN) {
-         // Not sure for this one, does this have a valid page entry?
-         //sup_load_zero(spf);
-      }else{
+      } else{
             if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) 
                proc_exit(-1);
       }

@@ -117,7 +117,6 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
       //setting up page table entry and user virutal address for frame
       struct frame* f = frame_get(kpage);
       if (f != NULL){
-        f->pte = pte;
         f->user_page_addr = upage;
       }
 

@@ -111,13 +111,12 @@ struct thread
     int exit_code;
 
     struct list spt;         /* Supplemental page table */
-    struct list mmap_files;
+    struct list mmap_files; // List of mmap files
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     void *curr_esp;                         /* Stack pointer */
-    //struct frame* stack_frame;
 
 #endif
 
@@ -199,7 +198,4 @@ struct child_process* create_child(struct thread *t);
 /*Function used to get thread with tid id from the list of all threads
 if no such thread exists, return NULL*/
 struct thread* find_thread_from_id (tid_t id);
-
-bool find_spt(void *uaddr);
-
 #endif /* threads/thread.h */

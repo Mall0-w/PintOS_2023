@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Kyle Lewis <kyle.lewis@mail.utoronto.ca>
+Justin Wang <justinx.wang@mail.utoronto.ca>
+Jahin Promit <jahin.promit@mail.utoronto.ca>
 
 ---- PRELIMINARIES ----
 
@@ -30,24 +30,103 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Update structs / enums
+
+Added to struct thread:
+    struct hash spt; // Supplemental page table 
+    struct list mmap_files; // List of memory mapped files 
+    void *curr_esp; // Stack pointer incase of page fault in kernel mode 
+    typedef int mapid_t;
+
+New Structs/enums:
+    struct mmap_file {
+    mapid_t id;
+    struct file *file;
+    void *addr;
+    struct list_elem mmap_elem;
+    };
+
+    /*struct representing an entry in the frame table*/
+    struct frame {
+    void* kernel_page_addr; /*kernel address from frame in frame table*/
+    void* user_page_addr; /*user address for frame in frame table*/
+    uint32_t* pte; /*page table entry for frame*/
+    struct hash_elem hash_elem; /*elem for keeping track in hash table*/
+    struct thread* frame_thread; /*thread that frame was created under*/
+    bool pinned; /*whether or not frame is "pinned" in the frame table*/
+    };
+    
+    enum page_type {
+    FILE_ORIGIN, // File
+    SWAP_ORIGIN, // Swap
+    ZERO_ORIGIN // All-zero page
+    };
+
+struct sup_pt_list {
+    struct list_elem elem; // Element in the list
+    enum page_type type; // Type of the page
+    uint8_t *upage; // User virtual address
+    struct file *file; // File pointer
+    off_t offset; // Offset of the file
+    bool writable; // Writable or not
+    size_t read_bytes; // Number of bytes to read
+    size_t zero_bytes; // Number of bytes to zeros
+    size_t swap_slot;   //index of swap slot
+    bool loaded;        //boolean used to indicate if its loaded in memeory
+};
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for accessing the data
 >> stored in the SPT about a given page.
 
+Since we are lazy loading (loading pages on demand), we will be mainly accessing the data
+on a page fault, which is handled in the page_fault() function in userprog/exception.c.
+It checks if it's currently in user mode as well as a valid user address,
+which makes it a candidate to be in the current thread's spt, and if it is, it grabs 
+the information depending on if the origin of the entry is from a page or a swap slot.
+It then loads the page into memory and updates the spt entry to reflect that it is now loaded.
+For file origin, it keeps the information of the file, such as the offset and upage, as well
+as the number of bytes that are going to be read. For swap origin, it finds the corresponding page inside the block
+by offsetting by its swap slot index; it then reads all of the sectors composing that page inside the block to the 
+page that we are swapping into using block_read, marking the swap slot as unused once its done.
+
+If the page is not in the spt, it first checks if a stack growth is necessary, or if the 
+page exists within the current thread's pagedir.
+
 >> A3: How does your code coordinate accessed and dirty bits between
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
+
+a frame in the frame table stores the user address that it corresponds to.  Using this user address,
+we can find the corresponding page and gets its accessed and dirty bits, and coordinate the two.  It helps that
+we only access these bits when evicting.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
+we use a lock when allocating frames, the first process to execute the code will get the lock
+and block the other process from getting a new frame until its done, after which the new process
+can grab the lock for itself and allocate a page.
+
 ---- RATIONALE ----
 
 >> A5: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+we chose a list for the supplemental page table at first since it met the basic
+needs required to keep track of the supplemental page table (insertion, finding, deleting)
+while being much easier to work with since we were intimidated by hash tables to begin with; it then
+became too cumbersome to rewrite the code surrounding the list implementation especially since the lists, in theory,
+would be on the smaller side.
+
+In terms of the swap table, it made sense to use bitmaps since we were reading to and from a block and essentially just
+had to keep track of what pages within the block were occupied; something that could easily be represented with a bitmap
+
+For the frame table, we decided to use a hash map since we were almost always referring to a frame by its kernel address whenever
+we needed to reference the data structure; we decided that since we were referencing frames in this way it would be easy to store them
+all in a hash_table especially since hash tables work at dynamic sizes.
 
                PAGING TO AND FROM DISK
                =======================
@@ -63,13 +142,32 @@ FirstName LastName <email@domain.example>
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
 
+In order to evict, frame_add must first fail to allocate a page.  After which, it will
+go through all the frames in the frame table, starting at whatever index the clock algorithim finished at (or the first if the
+algorithim has yet to be used).  We then continue through the clock algorithim as normal, ignoring any pinned frames
+(go through frame table, if a page is not accessed, it is the frame to evict it otherwise mark it as unaccessed and continue).
+We make sure to set a hard cutoff at two iterations of the frame table in the event of an error since, with the clock algorithim,
+the only way it can iterate through all pages twice is if everything is pinned.
+
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
+when a frame is evicted, its data is cleared out and its supplemental page table gains the data
+needed to reaquire the page, for example the swap slot if it was written to swap, the frame data
+structre is also deallocated and then reallocted by P.  This way P is able
+to manage everything as if it had just gotten a brand new page and if Q tries to access its page, it will page fault
+and allocate a new frame, updating its data accordingly.
 
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+Since the stack grows downwards, the faulting address would be smaller than the 
+current stack pointer, the 32 bytes constraint is the worst case when the PUSHA
+instruction is done, so it checks if the fault address can be that far (4.3.3).
+If it can, add a page to the stack by adding a new entry to the spt, and then
+allocating a new frame for it, setting the current thread's pagedir to the new 
+frame.
 
 ---- SYNCHRONIZATION ----
 
@@ -77,22 +175,38 @@ FirstName LastName <email@domain.example>
 >> particular, explain how it prevents deadlock.  (Refer to the
 >> textbook for an explanation of the necessary conditions for
 >> deadlock.)
+Frame table used locks for allocating, and evicting frames.
+Supplemental page table used locks for inserting, finding, and deleting entries to ensure 
+that only one thread can access the supplemental page table at a time.
+The swap table used locks for allocating, and freeing swap slot to prevent swapping at 
+the same time.
+Deadlocks are prevented by ensuring locks are acquired in the proper order, and releasing it 
+whenever the task in hand is completed.
+
 
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
 
+
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
+The eviction algorithm is only used on pages that are not pinned, when a process 
+is being read from the file system or swap, the page is pinned to prevent it from
+being evicted.  The page is unpinned once the process is done reading from the file system.
 
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+We handle all paged-out pages within the page_fault() function in userprog/exception.c.
+A2 showcases how pages are brought in from the data structures created, which then gets 
+returned to continue the program from where it left off. For the cases where a user tries to 
+modify pages that aren't writable, and other invalid areas, it will simply exit the program.
 
 ---- RATIONALE ----
 
@@ -141,9 +255,14 @@ the quarter.
 
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
+The project was hard, took a lot of time.  The most difficult part of the project
+was determining what was causing issues (debugging issues); it would have been helpful
+if there was more advice on debugging all the connected compoenents.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+It showed me how annoying virtualization can be in modern machines, and how thankful 
+I am to not have to worry about doing this myself for my current machine.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you

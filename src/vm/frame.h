@@ -5,13 +5,13 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 
+/*struct representing an entry in the frame table*/
 struct frame {
-  void* kernel_page_addr;
-  void* user_page_addr;
-  uint32_t* pte;
-  struct hash_elem hash_elem;
-  struct thread* frame_thread;
-  bool pinned;
+  void* kernel_page_addr; /*kernel address from frame in frame table*/
+  void* user_page_addr; /*user address for frame in frame table*/
+  struct hash_elem hash_elem; /*elem for keeping track in hash table*/
+  struct thread* frame_thread; /*thread that frame was created under*/
+  bool pinned; /*whether or not frame is "pinned" in the frame table*/
 };
 
 unsigned

@@ -392,7 +392,6 @@ int write(uint8_t* stack){
   curr_address += sizeof(int);
   if(!copy_in(&buffer, (char**)curr_address,sizeof(char*)))
     return -1;
-  //char* buffer = *((char**)curr_address);
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
