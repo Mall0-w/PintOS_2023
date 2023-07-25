@@ -35,6 +35,7 @@ struct sup_pt_list {
     size_t zero_bytes; // Number of bytes to zeros
     size_t swap_slot;   //index of swap slot
     bool loaded;        //boolean used to indicate if its loaded in memeory
+    struct lock eviction_lock;  /*lock used to prevent page faults when evicting*/
 };
 /* Supplemental table functions */
 void sup_pt_init(struct list *sup_pt_list); // Initialize the supplemental page table

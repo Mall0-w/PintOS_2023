@@ -163,7 +163,6 @@ page_fault (struct intr_frame *f)
 
   void* rounded = pg_round_down(fault_addr);
   spf = sup_pt_find(&t->spt, rounded);
-
   // Page not found in supplemental table
    if(spf == NULL){
       //check if new stack page is to be allocated
@@ -182,6 +181,7 @@ page_fault (struct intr_frame *f)
       }
       return;
    } else{
+      lock_acquire(&spf->eviction_lock);
       // User is trying to write to a page that is not writable
       if (!spf->writable && write) 
          proc_exit(-1);
@@ -199,6 +199,7 @@ page_fault (struct intr_frame *f)
             if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) 
                proc_exit(-1);
       }
+      lock_release(&spf->eviction_lock);
       return;
    }
    // Kernel Mode, change eip and eax value 

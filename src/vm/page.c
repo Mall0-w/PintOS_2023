@@ -38,6 +38,7 @@ sup_pt_insert(struct list *sup_pt_list, enum page_type type, void *upage, struct
     spt->read_bytes = read_bytes;
     spt->zero_bytes = zero_bytes;
     spt->loaded = false;
+    lock_init(&spt->eviction_lock);
     list_push_front(sup_pt_list, &spt->elem);
     lock_release(&sup_pt_lock);
     return true;

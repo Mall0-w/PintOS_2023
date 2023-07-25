@@ -10,7 +10,6 @@
 #include "threads/vaddr.h"
 #include "kernel/bitmap.h"
 #include "lib/string.h"
-#include "threads/pte.h"
 
 /* hash used to map frames*/
 struct hash frame_table;
@@ -108,9 +107,11 @@ bool save_frame(struct frame* f){
     //check to see if the frame has a dirty bit
 
     struct sup_pt_list* spte = sup_pt_find(&f->frame_thread->spt, f->user_page_addr);
+    
     if(spte == NULL)
         PANIC("no supplementary page table entry found for frame");
 
+    lock_acquire(&spte->eviction_lock);
     //if dirty or designated to go into swap slot, swap into swap slot
     if(pagedir_is_dirty(f->frame_thread->pagedir, f->user_page_addr) || spte->type == SWAP_ORIGIN){
         //if dirty, need to load to a swap slot
@@ -134,7 +135,7 @@ bool save_frame(struct frame* f){
 
     //make pte as no longer existing within the page table
     pagedir_clear_page(f->frame_thread->pagedir, f->user_page_addr);
-
+    lock_release(&spte->eviction_lock);
     return true;
 }
 

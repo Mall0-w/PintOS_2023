@@ -73,6 +73,7 @@ struct sup_pt_list {
     size_t zero_bytes; // Number of bytes to zeros
     size_t swap_slot;   //index of swap slot
     bool loaded;        //boolean used to indicate if its loaded in memeory
+    struct lock eviction_lock;  /*lock used to prevent page faults when evicting*/
 };
 
 ---- ALGORITHMS ----
@@ -183,12 +184,16 @@ the same time.
 Deadlocks are prevented by ensuring locks are acquired in the proper order, and releasing it 
 whenever the task in hand is completed.
 
-
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
 
+There are two factors at play here preventing this; each supplemental page table
+entry has a lock that is used during eviction and page faulting; this lock is explicitly intended
+to prevent eviction and faulting from being handled at the same time.  Additionally,
+a page isn't marked as missing from the page table until the eviction of the page is done, again preventing
+them from being handled at the same time
 
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
@@ -216,6 +221,14 @@ modify pages that aren't writable, and other invalid areas, it will simply exit 
 >> possibility for deadlock but allows for high parallelism.  Explain
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
+
+    We fall along the lines of using many seperate locks for high parallelism
+    however, we limit locks to the individual tables (frame table, page table, swap table, etc).
+    I believe this means we fall somewhere between the two.  We chose this way because while we wanted
+    better parallelism from seperate locks, we also wanted to make our development easier by not
+    having to juggle many sperate locks and debug deadlocks/race conditions.  With this happy medium,
+    we both have much more parallelism than if we had just a single lock, while also making the development
+    of the project and hadnling of synchronization issues much easier.
 
              MEMORY MAPPED FILES
              ===================
