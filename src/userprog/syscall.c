@@ -561,7 +561,7 @@ int mmap(uint8_t* stack) {
   void *cur_addr;
 
   // Map each page to suplementary page table
-  for (int i = 0; i < file_length(f); i++) {
+  for (int i = 0; i * PGSIZE < file_length(f); i++) {
     offset = i * PGSIZE;
     cur_addr = addr + offset;
 
@@ -622,7 +622,7 @@ munmap_helper(mapid_t mapid) {
   struct sup_pt_list *cur_spt_entry;
 
   // Iterate through each page and unmap them
-  for (int i = 0; i < file_length(mmap_f->file); i++) {
+  for (int i = 0; i * PGSIZE < file_length(mmap_f->file); i++) {
     offset = i * PGSIZE;
     cur_addr = mmap_f->addr + offset;
     size_t page_read_bytes = PGSIZE < file_length(mmap_f->file) - offset ? PGSIZE : file_length(mmap_f->file) - offset;
@@ -630,20 +630,13 @@ munmap_helper(mapid_t mapid) {
     // Get corresponding supplementary page table entry
     cur_spt_entry = sup_pt_find(&cur->spt, cur_addr);
 
-    if (cur_spt_entry->loaded) {
-      void *kpage = pagedir_get_page(cur->pagedir, cur_spt_entry->upage);
-      ASSERT (kpage != NULL);
-
-      // Check if the upage or kpage is dirty and write to file if so.
-      if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage) ||
-          pagedir_is_dirty(cur->pagedir, kpage)) {
-        file_write_at(mmap_f->file, cur_spt_entry->upage, page_read_bytes, offset);
-      }
-      // Free frame and clear page
-      frame_free(kpage);
-      pagedir_clear_page(cur->pagedir, cur_spt_entry->upage);
-    }
-
+    // Check if the upage or kpage is dirty and write to file if so.
+    if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage)) {
+      file_write_at(mmap_f->file, cur_spt_entry->upage, page_read_bytes, offset);
+    } 
+    // Free frame and clear page
+    frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
+    pagedir_clear_page(cur->pagedir, cur_spt_entry->upage);
     // Remove entry from suplementary page table
     sup_pt_remove(&cur->spt, cur_addr);
   }
