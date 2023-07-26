@@ -40,10 +40,10 @@ Added to struct thread:
 
 New Structs/enums:
     struct mmap_file {
-    mapid_t id;
-    struct file *file;
-    void *addr;
-    struct list_elem mmap_elem;
+        mapid_t id;                      /* id of mapping */
+        struct file *file;               /* mapped file */
+        void *addr;                      /* user address of where file maps to*/
+        struct list_elem mmap_elem;      /* elem used in list of mmap_file */
     };
 
     /*struct representing an entry in the frame table*/
@@ -239,14 +239,41 @@ modify pages that aren't writable, and other invalid areas, it will simply exit 
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Added to struct thread:
+    struct list mmap_files; // List of memory mapped files 
+
+New Structs/enums:
+
+    struct mmap_file {
+        mapid_t id;                      /* id of mapping */
+        struct file *file;               /* mapped file */
+        void *addr;                      /* user address of where file maps to*/
+        struct list_elem mmap_elem;      /* elem used in list of mmap_file */
+    };
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+Each process/thread keeps track of a list of memory mapped files. The
+mmap system call will load the file into memory and get a corresponding
+mapid. The munmap system call will free the memory and check if any
+corresponding pages are dirty, if they are, the page content is written 
+to the file, otherwise, the pages are simply freed. Finally, munmap
+is called when the process exits.
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
+Before memory mapping any file, all the relavent addresses are checked
+to see if the pages have been mapped already. Given a file to be mapped,
+and a user address that represents where to map the file to, a number of 
+pages equivalent to the size of the file starting from the user address
+are checked against the default pintos page table as well as our
+implemented supplemental page table. If there is an existing entry, the
+mmap function terminates without mapping anything.
 
 ---- RATIONALE ----
 
@@ -256,6 +283,13 @@ modify pages that aren't writable, and other invalid areas, it will simply exit 
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+Our implementation does not share code between teh two situations.
+We didn't realize this similarity due to the fact that we used completely
+different data structures for each. However, knowing that now, if we were
+to rewrite the project, we would implement the two to share as much code 
+as possible through abstraction. They would be represented through the
+same data structure to reduce redundency.
 
                SURVEY QUESTIONS
                ================

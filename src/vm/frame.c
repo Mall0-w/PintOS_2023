@@ -118,6 +118,7 @@ bool save_frame(struct frame* f){
         //find an empty swap_index and dump page into it
         size_t swap_index = page_swap_in(f->user_page_addr);
         if(swap_index == BITMAP_ERROR){
+            // lock_release(&spte->eviction_lock);
             PANIC("NO FREE SWAP SLOTS");
             return false;
         }   
