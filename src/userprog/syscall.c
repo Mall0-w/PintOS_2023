@@ -566,7 +566,7 @@ int mmap(uint8_t* stack) {
     cur_addr = addr + offset;
 
     // Make sure each page address doesn't exist yet
-    if (sup_pt_find(&cur->spt, cur_addr)) {
+    if (sup_pt_find(&cur->spt, cur_addr) || pagedir_get_page(cur->pagedir, cur_addr)) {
       return -1;
     }
   }
@@ -632,7 +632,9 @@ munmap_helper(mapid_t mapid) {
 
     // Check if the upage or kpage is dirty and write to file if so.
     if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage)) {
+      lock_acquire(&file_lock);
       file_write_at(mmap_f->file, cur_spt_entry->upage, cur_spt_entry->read_bytes, offset);
+      lock_release(&file_lock);
     } 
     // Free frame and clear page
     frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
@@ -643,7 +645,9 @@ munmap_helper(mapid_t mapid) {
 
   // Free all mmap file resources
   list_remove(&mmap_f->mmap_elem);
+  lock_acquire(&file_lock);
   file_close(mmap_f->file);
+  lock_release(&file_lock);
   free(mmap_f);
 
   // Return

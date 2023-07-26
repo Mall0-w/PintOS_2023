@@ -137,10 +137,10 @@ struct thread
   typedef int mapid_t;
 
   struct mmap_file {
-   mapid_t id;
-   struct file *file;
-   void *addr;
-   struct list_elem mmap_elem;
+   mapid_t id;                      /* id of mapping */
+   struct file *file;               /* mapped file */
+   void *addr;                      /* user address of where file maps to*/
+   struct list_elem mmap_elem;      /* elem used in list of mmap_file */
   };
 
 /* If false (default), use round-robin scheduler.
