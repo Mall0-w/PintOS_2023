@@ -613,6 +613,8 @@ int
 munmap_helper(mapid_t mapid) {
   struct thread *cur = thread_current();
 
+  lock_acquire(&file_lock);
+
   // Find the mmap file corresponding to mapid
   struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
 
@@ -632,9 +634,7 @@ munmap_helper(mapid_t mapid) {
 
     // Check if the upage or kpage is dirty and write to file if so.
     if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage)) {
-      lock_acquire(&file_lock);
       file_write_at(mmap_f->file, cur_spt_entry->upage, cur_spt_entry->read_bytes, offset);
-      lock_release(&file_lock);
     } 
     // Free frame and clear page
     frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
@@ -645,11 +645,10 @@ munmap_helper(mapid_t mapid) {
 
   // Free all mmap file resources
   list_remove(&mmap_f->mmap_elem);
-  lock_acquire(&file_lock);
   file_close(mmap_f->file);
-  lock_release(&file_lock);
   free(mmap_f);
 
+  lock_release(&file_lock);
   // Return
   return 1;
 }
