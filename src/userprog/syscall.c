@@ -15,6 +15,9 @@
 #include "devices/input.h"
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 /*Mapping each syscall to their respective function*/
 static int (*handlers[])(uint8_t* stack) = {
@@ -30,7 +33,9 @@ static int (*handlers[])(uint8_t* stack) = {
   [SYS_WRITE]write,
   [SYS_SEEK]seek,
   [SYS_TELL]tell,
-  [SYS_CLOSE]close
+  [SYS_CLOSE]close,
+  [SYS_MMAP]mmap,
+  [SYS_MUNMAP]munmap
 };
 
 /*Lock used to handle filesys concurrency*/
@@ -41,6 +46,7 @@ struct lock error_lock;
 bool raised_error = false;
 
 static void syscall_handler (struct intr_frame *);
+struct mmap_file* find_mmap_file(struct thread *t, mapid_t mapid);
 
 
 void
@@ -100,7 +106,7 @@ bool copy_in (void* dst_, const void* usrc_, size_t size){
 
 /*Function used to determine if a pointer and its following range btres 
 are valid addresses for syscalls*/
-bool valid_ptr(void* ptr, int range){
+bool valid_esp(void* ptr, int range){
   struct thread* curr = thread_current();
   for(int i = 0; i <= range; i++){
     if(ptr == NULL) {
@@ -121,17 +127,17 @@ static void
 syscall_handler (struct intr_frame *f) 
 { 
   unsigned interrupt_number;
+  thread_current()->curr_esp = f->esp;
   
   // Check if the 4 bytes is in user virtual address space and has an existing
   // page associated with it, if all good put it in interrupt_number
-  if(!valid_ptr((void*) f->esp, 3))
+  if(!valid_esp((void*) f->esp, 3))
     proc_exit(-1);
   
   //copy in the interrupt number from the stack
   if(!copy_in(&interrupt_number, f->esp, sizeof(interrupt_number))) {
     proc_exit(-1);
   }
-
   //if interrupt number is valid, call its function and grab return code
   if(interrupt_number < sizeof(handlers) / sizeof(handlers[0])){
     //setting return code to code given by respective handler
@@ -167,8 +173,7 @@ int syscall_exit(uint8_t* stack){
 void proc_exit(int status){
   struct thread* cur = thread_current();
   cur->exit_code = status;
-  struct child_process *child = find_child_from_id(cur->tid, 
-                                &cur->parent->child_processes);
+  struct child_process *child = find_child_from_id(cur->tid, &cur->parent->child_processes);
   child->exit_code = status;
   if (status == -1) {
     child->is_alive = false;
@@ -187,9 +192,10 @@ int exec(uint8_t* stack){
     lock_release(&error_lock);
     return -1;
   }
+  // Checks if page exists to a mapped physical memory for every byte in cmd_line
+  if(!valid_esp((void*)cmd_line, 3)){
   // Checks if page exists to a mapped physical memory 
   // for every byte in cmd_line
-  if(!valid_ptr((void*)cmd_line, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -229,7 +235,7 @@ int create(uint8_t* stack){
     return -1;
   
   //checking for null filename or invalid ptr
-  if((int*) file_name == NULL || !valid_ptr((void*)file_name, 0)) {
+  if((int*) file_name == NULL || !valid_esp((void*)file_name, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -265,7 +271,7 @@ int open(uint8_t* stack){
     return -1;
 
   // Checks if the file name goes into unmapped memory
-  if((int*) file_name == NULL || !valid_ptr((void*)file_name, 3)){
+  if((int*) file_name == NULL || !valid_esp((void*)file_name, 3)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -276,6 +282,7 @@ int open(uint8_t* stack){
   lock_acquire(&file_lock);
   struct file* f = filesys_open(file_name);
   if(f == NULL){
+    lock_release(&file_lock);
     return -1;
   }
   bool is_exe = is_file_exe(f);
@@ -341,7 +348,7 @@ int read(uint8_t* stack){
   if(!copy_in(&size, curr_pos, sizeof(unsigned)))
     return -1;
 
-  if(!valid_ptr((void*)buffer, 0)) {
+  if((!is_user_vaddr(buffer) || buffer == NULL)){
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -355,13 +362,19 @@ int read(uint8_t* stack){
   }
 
   //acquire lock, find file and read
+  struct thread* t = thread_current();
+
   lock_acquire(&file_lock);
-  struct process_file* f = find_file(thread_current(), fd);
+  struct process_file* f = find_file(t, fd);
   if(f == NULL){
     lock_release(&file_lock);
     return -1;
   }
+
+  struct frame* mem_frame = frame_get(pagedir_get_page(t->pagedir, pg_round_down(stack)));
+  mem_frame->pinned = true;
   int read_size = file_read(f->file, buffer, (off_t) size);
+  mem_frame->pinned = false;
   lock_release(&file_lock);
   return read_size;
 }
@@ -379,13 +392,12 @@ int write(uint8_t* stack){
   curr_address += sizeof(int);
   if(!copy_in(&buffer, (char**)curr_address,sizeof(char*)))
     return -1;
-  //char* buffer = *((char**)curr_address);
   curr_address += sizeof(char*);
   if(!copy_in(&size, (int*)curr_address, sizeof(int)))
     return -1;
 
   // Checks if the buffer goes into unmapped memory
-  if(!valid_ptr((void*)buffer, 0)) {
+  if(!valid_esp((void*)buffer, 0)) {
     lock_acquire(&error_lock);
     raised_error = true;
     lock_release(&error_lock);
@@ -400,12 +412,15 @@ int write(uint8_t* stack){
   }
   //acquire lock for filesys and find file
   lock_acquire(&file_lock);
-  struct process_file* f = find_file(thread_current(), fd);
+  struct thread* t = thread_current();
+  struct process_file* f = find_file(t, fd);
   if(f == NULL){
     lock_release(&file_lock);
     return -1;
   }
 
+  struct frame* mem_frame = frame_get(pagedir_get_page(t->pagedir, pg_round_down(stack)));
+  mem_frame->pinned = true;
   int write_size = 0;
   if(is_file_exe(f->file)){
     //if file is an executable, check if what we're writing will change 
@@ -419,7 +434,7 @@ int write(uint8_t* stack){
     //write to file, then release lock
     write_size = (int)file_write(f->file, buffer, size);
   }
-
+  mem_frame->pinned = false;
   lock_release(&file_lock);
   return write_size;
   
@@ -510,4 +525,149 @@ void close_proc_file(struct process_file* f, bool release_lock){
   if(release_lock)
     lock_release(&file_lock);
   return;
+}
+
+int mmap(uint8_t* stack) {
+  struct thread *cur = thread_current();
+  int fd;
+  void *addr;
+
+  // Copy in arguments
+  uint8_t* curr_pos = stack;
+  if(!copy_in(&fd, curr_pos, sizeof(int)))
+    return -1;
+  curr_pos += sizeof(int);
+  if(!copy_in(&addr, curr_pos, sizeof(void*)))
+    return -1;
+
+  // Check for invalid arguments
+  if(fd == 0 || fd == 1 || addr == NULL || pg_ofs(addr) != 0 || !is_user_vaddr(addr)) {
+    return -1;
+  }
+
+  // Acquire file lock and find file
+  lock_acquire(&file_lock);
+  struct file *f = NULL;
+  struct process_file *pf = find_file(cur, fd);
+  if (pf && pf->file) {
+    f = file_reopen(pf->file);
+  }
+  if(f == NULL || file_length(f) == 0){
+    lock_release(&file_lock);
+    return -1;
+  }
+  lock_release(&file_lock);
+
+  size_t offset;
+  void *cur_addr;
+
+  for (int i = 0; i * PGSIZE < file_length(f); i++) {
+    offset = i * PGSIZE;
+    cur_addr = addr + offset;
+
+    // Make sure each page address doesn't exist yet
+    if (sup_pt_find(&cur->spt, cur_addr) || pagedir_get_page(cur->pagedir, cur_addr)) {
+      return -1;
+    }
+  }
+
+  // Map each page to suplementary page table
+  for (int i = 0; i * PGSIZE < file_length(f); i++) {
+    offset = i * PGSIZE;
+    cur_addr = addr + offset;
+    
+    size_t page_read_bytes = PGSIZE < file_length(f) - offset ? PGSIZE : file_length(f) - offset;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    sup_pt_insert(&cur->spt, FILE_ORIGIN, cur_addr, f, offset, true, page_read_bytes, page_zero_bytes);
+  }
+
+  // Create a mapid for the file
+  mapid_t mapid;
+  if (!list_empty(&cur->mmap_files)) {
+    mapid = list_entry(list_back(&cur->mmap_files), struct mmap_file, mmap_elem)->id + 1;
+  } else {
+    mapid = 1;
+  }
+
+  // Create mmap file and add it to threads mmap file list
+  struct mmap_file *mmap_f = (struct mmap_file *) malloc(sizeof(struct mmap_file));
+  mmap_f->id = mapid;
+  mmap_f->file = f;
+  mmap_f->addr = addr;
+  list_push_back(&cur->mmap_files, &mmap_f->mmap_elem);
+
+  // Return mapid
+  return mapid;
+}
+
+int 
+munmap(uint8_t* stack) {
+  mapid_t mapid;
+  if(!copy_in(&mapid, stack, sizeof(int)))
+    return -1;
+  return munmap_helper(mapid);
+}
+
+int 
+munmap_helper(mapid_t mapid) {
+  struct thread *cur = thread_current();
+
+  lock_acquire(&file_lock);
+
+  // Find the mmap file corresponding to mapid
+  struct mmap_file *mmap_f = find_mmap_file(cur, mapid);
+
+  if (mmap_f == NULL) return -1;
+
+  size_t offset;
+  void *cur_addr;
+  struct sup_pt_list *cur_spt_entry;
+
+  // Iterate through each page and unmap them
+  for (int i = 0; i * PGSIZE < file_length(mmap_f->file); i++) {
+    offset = i * PGSIZE;
+    cur_addr = mmap_f->addr + offset;
+
+    // Get corresponding supplementary page table entry
+    cur_spt_entry = sup_pt_find(&cur->spt, cur_addr);
+
+    // Check if the upage or kpage is dirty and write to file if so.
+    if (pagedir_is_dirty(cur->pagedir, cur_spt_entry->upage)) {
+      file_write_at(mmap_f->file, cur_spt_entry->upage, cur_spt_entry->read_bytes, offset);
+    } 
+    // Free frame and clear page
+    frame_free(pagedir_get_page(cur->pagedir, cur_spt_entry->upage));
+    pagedir_clear_page(cur->pagedir, cur_spt_entry->upage);
+    // Remove entry from suplementary page table
+    sup_pt_remove(&cur->spt, cur_addr);
+  }
+
+  // Free all mmap file resources
+  list_remove(&mmap_f->mmap_elem);
+  file_close(mmap_f->file);
+  free(mmap_f);
+
+  lock_release(&file_lock);
+  // Return
+  return 1;
+}
+
+/*Function used to find a mmap_file of given mapid under thread
+  returns NULL if no such file exists*/
+struct mmap_file*
+find_mmap_file(struct thread *t, mapid_t mapid) {
+  ASSERT (t != NULL);
+  struct list_elem *e;
+  if (!list_empty(&t->mmap_files)) {
+    for(e = list_begin(&t->mmap_files);
+        e != list_end(&t->mmap_files); e = list_next(e))
+    {
+      struct mmap_file *mmap_f = list_entry(e, struct mmap_file, mmap_elem);
+      if(mmap_f->id == mapid) {
+        return mmap_f;
+      }
+    }
+  }
+  return NULL;
 }

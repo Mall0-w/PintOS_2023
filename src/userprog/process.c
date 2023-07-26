@@ -21,6 +21,8 @@
 #include <stdbool.h>
 #include "filesys/file.h"
 #include "threads/malloc.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 
 #define MAX_ARGS 32 //maximum amount of args for a command; arbitrary
 
@@ -148,8 +150,6 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  // int list_len = list_size(&cur->opened_files);
-  // bool empty = list_empty(&cur->opened_files);
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
   /*call close on all of the process' files*/
 
@@ -171,6 +171,11 @@ process_exit (void)
     struct list_elem* e = list_pop_front(&cur->opened_files);
     struct process_file* f = list_entry(e, struct process_file, elem);
     close_proc_file(f, true);
+  }
+
+  while (!list_empty(&cur->mmap_files)) {
+    struct mmap_file *mmap_f = list_entry(list_begin(&cur->mmap_files), struct mmap_file, mmap_elem);
+    munmap_helper(mmap_f->id);
   }
   
   /* Destroy the current process's page directory and switch back
@@ -418,13 +423,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
-
-/* load() helpers. */
-
-static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -493,7 +493,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  struct thread *t = thread_current ();
+
+  // Don't need to seek file since we are getting it lazily
+  // When seeking from different parts of the file, we need to
+  // find the correct offset when seeking from the file
+
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -501,87 +506,76 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      
+      /* Add to thread's supp page table*/
+      if(!sup_pt_insert(&t->spt, FILE_ORIGIN, upage, file, ofs, writable, page_read_bytes, page_zero_bytes)) {
         return false;
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-
+      }
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs += PGSIZE; // Unsure if this should be page_read_bytes or PGSIZE
     }
   return true;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
+   user virtual memory. */ 
 static bool
 setup_stack (int argc, char* argv[], void **esp) 
 {
-  uint8_t *kpage;
-  bool success = false;
+  struct thread *t = thread_current(); 
+  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  if(!sup_pt_insert(&t->spt, ZERO_ORIGIN, upage, NULL, 0, true, 0, PGSIZE)) {
+    return false;
+  }
+  struct sup_pt_list* spt_entry = sup_pt_find(&t->spt, upage);
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success){
-        *esp = PHYS_BASE;
-        char* arg_pointers[argc];
-        int offset = 0;
-        //pushing args onto stack in reverse order
-        for(int i = argc - 1; i >= 0; i--){
-          //offset stack pointer with enough room for arg, offset length by 1 for null term
-          //using 128 as limit for strlen because of limit said in docs
-          offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
-          *esp = *esp - offset;
-          //copy arg into stack
-          memcpy(*esp, argv[i], offset);
-          //copy that pointer into the args
-          arg_pointers[i] = *esp;
-        }
-        //round the current stack position down by 4 to align with words
-        *esp = round_word_down(*esp);
-        //offset word for null pointer sentinel
-        *esp = *esp - sizeof(int*);
-        *((int**) *esp) = NULL;
-        //push pointers onto stack, again in reverse order
-        for(int i = argc - 1; i >= 0; i--){
-          *esp = *esp - sizeof(char*);
-          *((char**) *esp) = arg_pointers[i];
-        }
-        //now push pointer to first arg, argc, and null pointer for return address
-        //first arg
-        *esp = *esp - sizeof(char**);
-        *((char***) *esp) = *esp + sizeof(char*);
-        //argc
-        *esp = *esp - sizeof(int*);
-        *((int*) *esp) = argc;
-        //return address
-        *esp = *esp - sizeof(int*);
-        *((int**) *esp) = NULL;
-      }
-      else
-        palloc_free_page (kpage);
-    }
-  return success;
+  if(!sup_load_zero(spt_entry)) {
+    return false;
+  }
+
+  //pin thes stack, can unpin it after
+  struct frame* f = pagedir_get_page(t->pagedir, spt_entry->upage);
+  f->pinned = true;
+
+  *esp = PHYS_BASE;
+  char* arg_pointers[argc];
+  int offset = 0;
+  //pushing args onto stack in reverse order
+  for(int i = argc - 1; i >= 0; i--){
+    //offset stack pointer with enough room for arg, offset length by 1 for null term
+    //using 128 as limit for strlen because of limit said in docs
+    offset = sizeof(char) * (strnlen(argv[i], 128) + 1);
+    *esp = *esp - offset;
+    //copy arg into stack
+    memcpy(*esp, argv[i], offset);
+    //copy that pointer into the args
+    arg_pointers[i] = *esp;
+  }
+  //round the current stack position down by 4 to align with words
+  *esp = round_word_down(*esp);
+  //offset word for null pointer sentinel
+  *esp = *esp - sizeof(int*);
+  *((int**) *esp) = NULL;
+  //push pointers onto stack, again in reverse order
+  for(int i = argc - 1; i >= 0; i--){
+    *esp = *esp - sizeof(char*);
+    *((char**) *esp) = arg_pointers[i];
+  }
+  //now push pointer to first arg, argc, and null pointer for return address
+  //first arg
+  *esp = *esp - sizeof(char**);
+  *((char***) *esp) = *esp + sizeof(char*);
+  //argc
+  *esp = *esp - sizeof(int*);
+  *((int*) *esp) = argc;
+  //return address
+  *esp = *esp - sizeof(int*);
+  *((int**) *esp) = NULL;
+
+  return true;
 }
 
 /*Function used to find a processs_file of given fd under thread
@@ -597,26 +591,6 @@ struct process_file* find_file(struct thread* t, int fd){
       return curr_file;
   }
   return NULL;
-}
-
-/* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
-static bool
-install_page (void *upage, void *kpage, bool writable)
-{
-  struct thread *t = thread_current ();
-
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
 
 /*Function used to determine a file f is an executable*/

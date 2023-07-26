@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -108,9 +110,14 @@ struct thread
     struct thread* parent;
     int exit_code;
 
+    struct list spt;         /* Supplemental page table */
+    struct list mmap_files; // List of mmap files
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    void *curr_esp;                         /* Stack pointer */
+
 #endif
 
     /* Owned by thread.c. */
@@ -125,6 +132,15 @@ struct thread
    int exit_code;                           /* exit code for a process*/
    struct thread *t;                        /* thread corresponding to child process*/
    struct list_elem child_elem;           /*elem used in list of child processes*/
+  };
+
+  typedef int mapid_t;
+
+  struct mmap_file {
+   mapid_t id;                      /* id of mapping */
+   struct file *file;               /* mapped file */
+   void *addr;                      /* user address of where file maps to*/
+   struct list_elem mmap_elem;      /* elem used in list of mmap_file */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -182,5 +198,4 @@ struct child_process* create_child(struct thread *t);
 /*Function used to get thread with tid id from the list of all threads
 if no such thread exists, return NULL*/
 struct thread* find_thread_from_id (tid_t id);
-
 #endif /* threads/thread.h */

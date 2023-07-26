@@ -6,6 +6,9 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
+#include "userprog/pagedir.h"
+#include "userprog/pagedir.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -128,7 +131,9 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-
+  struct thread *t = thread_current ();
+  struct sup_pt_list *spf;
+  
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -150,17 +155,66 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if(user)
+  // Kernel mode doesn't keep track of user stack pointer
+  void *esp = user ? f->esp : t->curr_esp;
+
+  if(user && !is_user_vaddr(fault_addr))
    proc_exit(-1);
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  void* rounded = pg_round_down(fault_addr);
+  spf = sup_pt_find(&t->spt, rounded);
+  // Page not found in supplemental table
+   if(spf == NULL){
+      //check if new stack page is to be allocated
+      //do this by checking if stack pointer of frame is below fault_address and fault_address
+      //is above the max stack size
+      //subtracting above stack limit because of faults 32 above stack pointer
+
+      if((esp - ABOVE_STACK_LIMIT) <= fault_addr  && MAX_STACK_SIZE >=(PHYS_BASE - pg_round_down(fault_addr))){
+         if(!increase_stack_size(fault_addr, thread_current()))
+            proc_exit(-1);
+      }
+      else{
+         if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) {
+            proc_exit(-1);
+         }
+      }
+      return;
+   } else{
+      lock_acquire(&spf->eviction_lock);
+      // User is trying to write to a page that is not writable
+      if (!spf->writable && write) 
+         proc_exit(-1);
+
+      if(spf->type == FILE_ORIGIN) {
+         // Load the page from the file
+         if(!sup_load_file(spf))
+            proc_exit(-1);
+      }
+      else if(spf->type == SWAP_ORIGIN) {
+         // Load the page from the swap
+         if(!sup_load_swap(spf))
+            proc_exit(-1);
+      } else{
+            if (!pagedir_get_page (thread_current()->pagedir, fault_addr)) 
+               proc_exit(-1);
+      }
+      lock_release(&spf->eviction_lock);
+      return;
+   }
+   // Kernel Mode, change eip and eax value 
+   if(!user) {
+      f->eip = (void *) f->eax;
+      f->eax = 0xffffffff;
+      return;
+   }
+
+   // User Mode, kill the process after not processing the page fault
+   printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+         kill (f);
 }
 
