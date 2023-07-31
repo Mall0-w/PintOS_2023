@@ -5,13 +5,6 @@
 #include "filesys/off_t.h"
 #include "devices/block.h"
 
-//number of direct pointers an inode_disk can have
-//126 since had 125 from unused that could be used and an extra
-//spot for start which was removed
-#define MAX_DIRECT_POINTERS 124
-#define NUM_SECTORS_IN_BLOCK 128 //number of sectors in a block of memory
-
-
 struct bitmap;
 
 void inode_init (void);
