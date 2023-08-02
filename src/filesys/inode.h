@@ -5,6 +5,9 @@
 #include "filesys/off_t.h"
 #include "devices/block.h"
 
+#define MAX_DIRECT_SECTORS 125
+#define MAX_INDIRECT_SECTORS 128
+
 struct bitmap;
 
 void inode_init (void);

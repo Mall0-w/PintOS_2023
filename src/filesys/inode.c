@@ -14,10 +14,10 @@
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    block_sector_t start;               /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    block_sector_t direct[MAX_DIRECT_SECTORS];               /*direct sectors of inode */
+    block_sector_t* indirect; /*sector container pointer to all indirect sectors*/
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -26,6 +26,21 @@ static inline size_t
 bytes_to_sectors (off_t size)
 {
   return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
+}
+
+/*function used to get sector belonging to inode disk at position pos*/
+static block_sector_t get_sector(struct inode_disk* d, int pos){
+  //if pos is an index to a direct sector
+  if(pos < MAX_DIRECT_SECTORS){
+    return d->direct[pos];
+  }else{
+    //otherwise handle indirect pointer
+    pos -= MAX_DIRECT_SECTORS;
+    //load sector
+    block_sector_t indirect[MAX_INDIRECT_SECTORS];
+    block_read(fs_device, *(d->indirect), indirect);
+    return indirect[pos];
+  }
 }
 
 /* In-memory inode. */
@@ -44,11 +59,11 @@ struct inode
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 static block_sector_t
-byte_to_sector (const struct inode *inode, off_t pos) 
+byte_to_sector (struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
   if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+    return get_sector(&inode->data, pos / BLOCK_SECTOR_SIZE);
   else
     return -1;
 }
@@ -63,6 +78,73 @@ inode_init (void)
 {
   list_init (&open_inodes);
 }
+
+/*function used to extend an inode*/
+static bool
+extend_inode(struct inode* in, size_t start, size_t num_sectors){
+  //declaring arrays for managing indirect / double indirect sectors
+  block_sector_t indirect[MAX_INDIRECT_SECTORS];
+  bool written_indirect = false;
+
+  //index used to keep relative indexes in respect to indirect pointers
+  size_t relative_index = 0;
+
+  //zero bytes used to zero out memory
+  uint8_t zeros[BLOCK_SECTOR_SIZE] = {0};
+
+  struct inode_disk* d = &in->data;
+  
+  for(size_t i = start; i < (start + num_sectors); i++){
+    //if in indirect sectors
+    if(i < MAX_DIRECT_SECTORS){
+      if(!free_map_allocate(1, &d->direct[i]))
+        return false;
+      block_write(fs_device, d->direct[i], zeros);
+    }else{
+      //if haven't already given a sector to the indirect pointer
+      if(!written_indirect){
+        
+        //check if indirect already exists
+        if(d->indirect == NULL){
+          //if not, allocate indirect sector for inode and change flag
+          if(!free_map_allocate(1, d->indirect))
+            return false;
+        }else{
+          block_read(fs_device, *(d->indirect), indirect);
+        }
+        
+        written_indirect = true;
+      }
+      relative_index = i - MAX_DIRECT_SECTORS;
+      //allocate sector within indirect
+      if(!free_map_allocate(1, &indirect[relative_index]))
+        return false;
+      block_write(fs_device, indirect[relative_index], zeros);
+    }
+  }
+
+  //now that done iterating through, check if we need to read back in all indirect memory
+  if(written_indirect){
+    block_write(fs_device, *(d->indirect), indirect);
+  }
+
+  //write entire thing back to disk
+  block_write(fs_device, in->sector, d);
+
+  return true;   
+}
+
+/*function used to allocate all starting sectors for a disk*/
+static
+bool allocate_sectors(struct inode_disk* d, size_t num_sectors, block_sector_t write_sector){
+  struct inode* dummy = malloc(sizeof(struct inode));
+  dummy->data = *d;
+  dummy->sector = write_sector;
+  bool success = extend_inode(dummy, 0, num_sectors);
+  free(dummy);
+  return success;
+}
+
 
 /* Initializes an inode with LENGTH bytes of data and
    writes the new inode to sector SECTOR on the file system
@@ -87,19 +169,20 @@ inode_create (block_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-      if (free_map_allocate (sectors, &disk_inode->start)) 
-        {
-          block_write (fs_device, sector, disk_inode);
-          if (sectors > 0) 
-            {
-              static char zeros[BLOCK_SECTOR_SIZE];
-              size_t i;
+      success = allocate_sectors(disk_inode, sectors, sector);
+      // if (free_map_allocate (sectors, &disk_inode->start)) 
+      //   {
+      //     block_write (fs_device, sector, disk_inode);
+      //     if (sectors > 0) 
+      //       {
+      //         static char zeros[BLOCK_SECTOR_SIZE];
+      //         size_t i;
               
-              for (i = 0; i < sectors; i++) 
-                block_write (fs_device, disk_inode->start + i, zeros);
-            }
-          success = true; 
-        } 
+      //         for (i = 0; i < sectors; i++) 
+      //           block_write (fs_device, disk_inode->start + i, zeros);
+      //       }
+      //     success = true; 
+      //   } 
       free (disk_inode);
     }
   return success;
@@ -177,8 +260,12 @@ inode_close (struct inode *inode)
       if (inode->removed) 
         {
           free_map_release (inode->sector, 1);
-          free_map_release (inode->data.start,
-                            bytes_to_sectors (inode->data.length)); 
+          // free_map_release (inode->data.start,
+          //                   bytes_to_sectors (inode->data.length));
+          //iterate through all sectors and release
+          for(size_t i = 0; i < bytes_to_sectors(inode->data.length); i++){
+            free_map_release(get_sector(&inode->data, i), 1);
+          } 
         }
 
       free (inode); 
@@ -264,6 +351,20 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   if (inode->deny_write_cnt)
     return 0;
+
+  //check if inode is getting bigger
+  if(size + offset > inode->data.length){
+    size_t length = bytes_to_sectors(inode->data.length);
+    size_t new_length = bytes_to_sectors(size + offset);
+    //check if need to add new sectors
+    if(length < new_length){
+      //if now there's more sectors, try to extend inode
+      if(!extend_inode(inode, length, new_length - length))
+      return false;
+    }
+    //update length
+    inode->data.length = size+offset;
+  }
 
   while (size > 0) 
     {
