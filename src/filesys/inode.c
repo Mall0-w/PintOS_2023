@@ -17,7 +17,8 @@ struct inode_disk
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
     block_sector_t direct[MAX_DIRECT_SECTORS];               /*direct sectors of inode */
-    block_sector_t indirect; /*sector container pointer to all indirect sectors*/
+    block_sector_t indirect; /*sector container all indirect sectors*/
+    block_sector_t dub_indirect; /*sector containing all double indirect sectors*/
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -33,7 +34,7 @@ static block_sector_t get_sector(struct inode_disk* d, int pos){
   //if pos is an index to a direct sector
   if(pos < MAX_DIRECT_SECTORS){
     return d->direct[pos];
-  }else{
+  }else if (pos < MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS){
     //otherwise handle indirect pointer
     pos -= MAX_DIRECT_SECTORS;
     //load sector
@@ -41,6 +42,25 @@ static block_sector_t get_sector(struct inode_disk* d, int pos){
     block_read(fs_device, d->indirect, indirect);
     return indirect[pos];
   }
+
+  //otherwise double indirect
+  pos -= (MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS);
+
+  block_sector_t dub_indirect[MAX_INDIRECT_SECTORS];
+  block_sector_t indirect[MAX_INDIRECT_SECTORS];
+
+  //raed from double indirect
+  block_read(fs_device, d->dub_indirect, dub_indirect);
+  //now get proper offsets
+  //find what double indirect sector it belongs to
+  int dub_sector = pos / MAX_INDIRECT_SECTORS;
+  //find what single indirect sector it belongs to
+  int ind_sector = pos % MAX_INDIRECT_SECTORS;
+
+  block_read(fs_device, dub_indirect[dub_sector], indirect);
+
+  return indirect[ind_sector];
+
 }
 
 /* In-memory inode. */
@@ -84,7 +104,12 @@ static bool
 extend_inode(struct inode* in, size_t start, size_t num_sectors){
   //declaring arrays for managing indirect / double indirect sectors
   block_sector_t indirect[MAX_INDIRECT_SECTORS];
+  block_sector_t dub_indirect[MAX_INDIRECT_SECTORS] = {0};
+
+  block_sector_t* dub_contents[MAX_INDIRECT_SECTORS];
+
   bool written_indirect = false;
+  bool written_double = false;
 
   //index used to keep relative indexes in respect to indirect pointers
   size_t relative_index = 0;
@@ -100,7 +125,7 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
       if(!free_map_allocate(1, &d->direct[i]))
         return false;
       block_write(fs_device, d->direct[i], zeros);
-    }else{
+    }else if(i < MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS){
       //if haven't already given a sector to the indirect pointer
       if(!written_indirect){
         
@@ -120,12 +145,58 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
       if(!free_map_allocate(1, &indirect[relative_index]))
         return false;
       block_write(fs_device, indirect[relative_index], zeros);
+    }else{
+      //otherwise dealing with double indirect (uh oh)
+      if(!written_double){
+        //check if double exists
+        if(d->dub_indirect == 0){
+          if(!free_map_allocate(1, &d->dub_indirect))
+            return false;
+        }else{
+          block_read(fs_device, d->dub_indirect, dub_indirect);
+        }
+      }
+      relative_index = i - (MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS);
+      size_t dub_sector = relative_index / MAX_INDIRECT_SECTORS;
+      size_t ind_sector = relative_index % MAX_INDIRECT_SECTORS;
+      
+      //essentially go through single indirect for that sector
+      if(dub_contents[dub_sector] == NULL){
+        //dynamically allocate and check if pointer is null that way don't have to carry around
+        //an array of flags for each indirect pointer under double indirect
+        dub_contents[dub_sector] = calloc(sizeof(block_sector_t), MAX_INDIRECT_SECTORS);
+        if(dub_indirect[dub_sector] == 0){
+          if(!free_map_allocate(1, &dub_indirect[dub_sector]))
+            return false;
+        }else{
+          block_read(fs_device, dub_indirect[dub_sector], dub_contents[dub_sector]);
+        }
+      }
+
+      //allocate as per normal
+      if(!free_map_allocate(1, &dub_contents[dub_sector][ind_sector]))
+        return false;
+      
+      block_write(fs_device, dub_contents[dub_sector][ind_sector], zeros);
     }
   }
 
   //now that done iterating through, check if we need to read back in all indirect memory
   if(written_indirect){
     block_write(fs_device, d->indirect, indirect);
+  }
+
+  if(written_double){
+    //iterate through all single directs and link them to double indirect
+    size_t start_sector = (start - (MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS)) / MAX_INDIRECT_SECTORS;
+    size_t end_sector = ((start + num_sectors) - (MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS)) / MAX_INDIRECT_SECTORS;
+    for(size_t i = start_sector; i <= end_sector; i++){
+      //free dynamically allocated and write
+      block_write(fs_device, dub_indirect[i], dub_contents[i]);
+      free(dub_contents[i]);
+    }
+    //write double indirect to device
+    block_write(fs_device, d->dub_indirect, dub_indirect);
   }
 
   //write entire thing back to disk
@@ -170,6 +241,7 @@ inode_create (block_sector_t sector, off_t length)
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
       disk_inode->indirect = 0;
+      disk_inode->dub_indirect = 0;
       success = allocate_sectors(disk_inode, sectors, sector);
       // if (free_map_allocate (sectors, &disk_inode->start)) 
       //   {
