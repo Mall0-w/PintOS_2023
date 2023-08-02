@@ -17,7 +17,7 @@ struct inode_disk
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
     block_sector_t direct[MAX_DIRECT_SECTORS];               /*direct sectors of inode */
-    block_sector_t* indirect; /*sector container pointer to all indirect sectors*/
+    block_sector_t indirect; /*sector container pointer to all indirect sectors*/
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -38,7 +38,7 @@ static block_sector_t get_sector(struct inode_disk* d, int pos){
     pos -= MAX_DIRECT_SECTORS;
     //load sector
     block_sector_t indirect[MAX_INDIRECT_SECTORS];
-    block_read(fs_device, *(d->indirect), indirect);
+    block_read(fs_device, d->indirect, indirect);
     return indirect[pos];
   }
 }
@@ -105,12 +105,12 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
       if(!written_indirect){
         
         //check if indirect already exists
-        if(d->indirect == NULL){
+        if(d->indirect == 0){
           //if not, allocate indirect sector for inode and change flag
-          if(!free_map_allocate(1, d->indirect))
+          if(!free_map_allocate(1, &d->indirect))
             return false;
         }else{
-          block_read(fs_device, *(d->indirect), indirect);
+          block_read(fs_device, d->indirect, indirect);
         }
         
         written_indirect = true;
@@ -125,7 +125,7 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
 
   //now that done iterating through, check if we need to read back in all indirect memory
   if(written_indirect){
-    block_write(fs_device, *(d->indirect), indirect);
+    block_write(fs_device, d->indirect, indirect);
   }
 
   //write entire thing back to disk
@@ -169,6 +169,7 @@ inode_create (block_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+      disk_inode->indirect = 0;
       success = allocate_sectors(disk_inode, sectors, sector);
       // if (free_map_allocate (sectors, &disk_inode->start)) 
       //   {
