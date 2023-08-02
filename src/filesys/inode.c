@@ -14,10 +14,10 @@
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    block_sector_t start;               /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    block_sector_t direct[MAX_DIRECT_SECTORS]; /* Direct sectorss */
+    block_sector_t indirect; /* Indirect pointers */
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -39,6 +39,18 @@ struct inode
     struct inode_disk data;             /* Inode content. */
   };
 
+/* Function used to get the sector belonging to inode disk at position pos */
+static block_sector_t get_sector(struct inode_disk *disk_inode, off_t pos) {
+  if(pos < MAX_DIRECT_SECTORS) {
+    return disk_inode->direct[pos];
+  } else if(pos < MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS) {
+    return disk_inode->indirect[pos - MAX_DIRECT_SECTORS];
+  } else {
+    return -1;
+  }
+}
+
+
 /* Returns the block device sector that contains byte offset POS
    within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
@@ -47,8 +59,9 @@ static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
+  block_sector_t *sector; 
   if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+    return get_sector(&inode->data, pos / BLOCK_SECTOR_SIZE);
   else
     return -1;
 }
