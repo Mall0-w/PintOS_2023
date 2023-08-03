@@ -437,6 +437,8 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     }
     //update length
     inode->data.length = size+offset;
+    //write again so it remembers the length I HATE THIS
+    block_write(fs_device, inode->sector, &inode->data);
   }
 
   while (size > 0) 
