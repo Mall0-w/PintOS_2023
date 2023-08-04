@@ -156,6 +156,7 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
         }else{
           block_read(fs_device, d->dub_indirect, dub_indirect);
         }
+        written_double = true;
       }
       relative_index = i - (MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS);
       size_t dub_sector = relative_index / MAX_INDIRECT_SECTORS;
