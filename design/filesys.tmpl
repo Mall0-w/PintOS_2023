@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Justin Wang <justinx.wang@mail.utoronto.ca>
+Jahin Promit <jahin.promit@mail.utoronto.ca>
+Kyle Lewis <kyle.lewis@mail.utoronto.ca>
 
 ---- PRELIMINARIES ----
 
@@ -30,13 +30,38 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Added to
+struct inode_disk
+  {
+    block_sector_t direct[MAX_DIRECT_SECTORS]; // Stores direct sectors of the file so it is easy to access
+    block_sector_t indirect; // Stores indirect pointer to direct sectors
+    block_sector_t dub_indirect; // Stores indirect pointer, which allows access to direct sectors
+  };
+
+
 >> A2: What is the maximum size of a file supported by your inode
->> structure?  Show your work.
+>> structure?  Show your work. 
+    Each inode can have 124 direct blocks, 1 indirect block, and 1 doubly indirect block.
+    We defined each indirect block to contain 128 sectors, so each sector
+    points to a direct sector. Similarily, since each doubly indirect block
+    points to an indirect block which contains 128 indirect pointers, each
+    of the pointers pointing to 128 direct sectors, we can have 128^2 direct sectors
+    from the doubly indirect block.
+    This means that we can have 124 + 128 + 128^2 = 16636 blocks. 
+    Each block is 512 bytes, so we can have 16636 * 512 bytes ~= 8 MB.
+    However, we must consider the metadata that is stored in the inode.
+    Which lines up with the FAQ answer being that an individual file 
+    will be smaller than the file system partition minus the metadata 
+    which is 8mb.
+
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+There's a lock which prevents two processes from extending the file at the same time. 
+The lock is acquired before the file is extended and released after the file is extended. 
+This ensures that only one process can extend the file at a time.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -59,6 +84,14 @@ FirstName LastName <email@domain.example>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+It is a multilevel index. The combination of maximizing the number of direct blocks 
+allows us to store more data in the inode itself. This is because the inode is a fixed size,
+so not maximizing it just wastes space. The indirect and doubly indirect blocks are used to
+store the rest of the data, where the indirect block stores pointers to the direct blocks
+and the doubly indirect block stores pointers to the indirect blocks. This allows us to store
+more data than if we just used direct blocks.
+
 
                 SUBDIRECTORIES
                 ==============
