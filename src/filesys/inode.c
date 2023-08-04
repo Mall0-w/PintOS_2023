@@ -120,7 +120,7 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
   struct inode_disk* d = &in->data;
   
   for(size_t i = start; i < (start + num_sectors); i++){
-    //if in indirect sectors
+    //if in direct sectors
     if(i < MAX_DIRECT_SECTORS){
       if(!free_map_allocate(1, &d->direct[i]))
         return false;
@@ -128,7 +128,6 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
     }else if(i < MAX_DIRECT_SECTORS + MAX_INDIRECT_SECTORS){
       //if haven't already given a sector to the indirect pointer
       if(!written_indirect){
-        
         //check if indirect already exists
         if(d->indirect == 0){
           //if not, allocate indirect sector for inode and change flag
@@ -137,7 +136,6 @@ extend_inode(struct inode* in, size_t start, size_t num_sectors){
         }else{
           block_read(fs_device, d->indirect, indirect);
         }
-        
         written_indirect = true;
       }
       relative_index = i - MAX_DIRECT_SECTORS;
@@ -243,19 +241,6 @@ inode_create (block_sector_t sector, off_t length)
       disk_inode->indirect = 0;
       disk_inode->dub_indirect = 0;
       success = allocate_sectors(disk_inode, sectors, sector);
-      // if (free_map_allocate (sectors, &disk_inode->start)) 
-      //   {
-      //     block_write (fs_device, sector, disk_inode);
-      //     if (sectors > 0) 
-      //       {
-      //         static char zeros[BLOCK_SECTOR_SIZE];
-      //         size_t i;
-              
-      //         for (i = 0; i < sectors; i++) 
-      //           block_write (fs_device, disk_inode->start + i, zeros);
-      //       }
-      //     success = true; 
-      //   } 
       free (disk_inode);
     }
   return success;
@@ -333,15 +318,13 @@ inode_close (struct inode *inode)
       if (inode->removed) 
         {
           free_map_release (inode->sector, 1);
-          // free_map_release (inode->data.start,
-          //                   bytes_to_sectors (inode->data.length));
           //iterate through all sectors and release
           for(size_t i = 0; i < bytes_to_sectors(inode->data.length); i++){
             free_map_release(get_sector(&inode->data, i), 1);
-          } 
+          }
         }
 
-      free (inode); 
+      free (inode);
     }
 }
 

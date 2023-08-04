@@ -354,15 +354,14 @@ int read(uint8_t* stack){
     return (int) input_getc();
   }
 
-  //acquire lock, find file and read
+  //acquire lock, find file
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
   if(f == NULL){
-    lock_release(&file_lock);
     return -1;
   }
-  int read_size = file_read(f->file, buffer, (off_t) size);
   lock_release(&file_lock);
+  int read_size = file_read(f->file, buffer, (off_t) size);
   return read_size;
 }
 
@@ -405,6 +404,7 @@ int write(uint8_t* stack){
     lock_release(&file_lock);
     return -1;
   }
+  lock_release(&file_lock);
 
   int write_size = 0;
   if(is_file_exe(f->file)){
@@ -420,7 +420,6 @@ int write(uint8_t* stack){
     write_size = (int)file_write(f->file, buffer, size);
   }
 
-  lock_release(&file_lock);
   return write_size;
   
 }
