@@ -10,6 +10,8 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+struct lock extend_lock;
+
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
@@ -97,6 +99,7 @@ void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  lock_init(&extend_lock);
 }
 
 /*function used to extend an inode*/
@@ -415,8 +418,12 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     //check if need to add new sectors
     if(length < new_length){
       //if now there's more sectors, try to extend inode
-      if(!extend_inode(inode, length, new_length - length))
-      return false;
+      lock_acquire(&extend_lock);
+      if(!extend_inode(inode, length, new_length - length)) {
+        lock_release(&extend_lock);
+        return false;
+      }
+      lock_release(&extend_lock);
     }
     //update length
     inode->data.length = size+offset;
