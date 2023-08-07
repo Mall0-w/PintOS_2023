@@ -69,6 +69,11 @@ This ensures that only one process can extend the file at a time.
 >> may not read data other than what B writes, e.g. if B writes
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
+We have a lock during extending during writing, which prevents reading 
+when writing is happening. This ensures that the reading process will
+not read data that is being written to. For reading, a lock was added so 
+you cannot extend the file while reading. This ensures that the reading
+process will not read data that is being extended.
 
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
