@@ -358,6 +358,7 @@ int read(uint8_t* stack){
   lock_acquire(&file_lock);
   struct process_file* f = find_file(thread_current(), fd);
   if(f == NULL){
+    lock_release(&file_lock);
     return -1;
   }
   lock_release(&file_lock);
