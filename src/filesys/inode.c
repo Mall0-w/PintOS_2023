@@ -10,8 +10,6 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-struct lock extend_lock;
-
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
@@ -74,6 +72,7 @@ struct inode
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
+    struct lock extend_lock;            /* Lock for extending read/write */
   };
 
 /* Returns the block device sector that contains byte offset POS
@@ -99,7 +98,6 @@ void
 inode_init (void) 
 {
   list_init (&open_inodes);
-  lock_init(&extend_lock);
 }
 
 /*function used to extend an inode*/
@@ -282,6 +280,7 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
+  lock_init(&inode->extend_lock);
   block_read (fs_device, inode->sector, &inode->data);
   return inode;
 }
@@ -351,9 +350,11 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   off_t bytes_read = 0;
   uint8_t *bounce = NULL;
 
-  lock_acquire(&extend_lock);
+  
+
   while (size > 0) 
     {
+      lock_acquire(&inode->extend_lock);
       /* Disk sector to read, starting byte offset within sector. */
       block_sector_t sector_idx = byte_to_sector (inode, offset);
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
@@ -362,6 +363,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       off_t inode_left = inode_length (inode) - offset;
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
       int min_left = inode_left < sector_left ? inode_left : sector_left;
+
+      lock_release(&inode->extend_lock);
 
       /* Number of bytes to actually copy out of this sector. */
       int chunk_size = size < min_left ? size : min_left;
@@ -394,7 +397,6 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
     }
   free (bounce);
 
-  lock_release(&extend_lock);
 
   return bytes_read;
 }
@@ -422,12 +424,12 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     //check if need to add new sectors
     if(length < new_length){
       //if now there's more sectors, try to extend inode
-      lock_acquire(&extend_lock);
+      lock_acquire(&inode->extend_lock);
       if(!extend_inode(inode, length, new_length - length)) {
-        lock_release(&extend_lock);
+        lock_release(&inode->extend_lock);
         return false;
       }
-      lock_release(&extend_lock);
+      lock_release(&inode->extend_lock);
     }
     //update length
     inode->data.length = size+offset;
